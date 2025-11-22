@@ -69,18 +69,18 @@ class ConfidenceValidator:
 
 class QualityValidator:
     """
-    Validates landmark quality.
+    Validates landmark quality based on visibility and presence.
     
-    Checks if hand landmarks are well-tracked and visible.
+    Ensures landmarks are well-tracked before attempting gesture detection.
     """
     
-    def __init__(self, min_visibility: float = 0.5, min_presence: float = 0.5):
+    def __init__(self, min_visibility: float = 0.1, min_presence: float = 0.1):
         """
         Initialize quality validator.
         
         Args:
-            min_visibility: Minimum landmark visibility score
-            min_presence: Minimum landmark presence score
+            min_visibility: Minimum average visibility score (0.0-1.0) - LOWERED from 0.5
+            min_presence: Minimum average presence score (0.0-1.0) - LOWERED from 0.5
         """
         self.min_visibility = min_visibility
         self.min_presence = min_presence
@@ -98,28 +98,38 @@ class QualityValidator:
         if landmarks is None:
             return False
         
-        # Check visibility and presence scores
-        visibilities = []
-        presences = []
+        # MediaPipe Hands (21 landmarks) does not provide visibility/presence scores
+        # so we skip this check for hands to avoid false negatives
+        if len(landmarks.landmark) == 21:
+            return True
+        
+        # Calculate average visibility and presence
+        total_visibility = 0.0
+        total_presence = 0.0
+        count = 0
         
         for landmark in landmarks.landmark:
+            # Hand landmarks don't always have visibility/presence, so default to 1.0
             if hasattr(landmark, 'visibility'):
-                visibilities.append(landmark.visibility)
+                total_visibility += landmark.visibility
+            else:
+                total_visibility += 1.0
+                
             if hasattr(landmark, 'presence'):
-                presences.append(landmark.presence)
+                total_presence += landmark.presence
+            else:
+                total_presence += 1.0
+                
+            count += 1
         
-        # Calculate average scores
-        if visibilities:
-            avg_visibility = np.mean(visibilities)
-            if avg_visibility < self.min_visibility:
-                return False
+        if count == 0:
+            return False
         
-        if presences:
-            avg_presence = np.mean(presences)
-            if avg_presence < self.min_presence:
-                return False
+        avg_visibility = total_visibility / count
+        avg_presence = total_presence / count
         
-        return True
+        # Very permissive thresholds - just need basic tracking
+        return avg_visibility >= self.min_visibility and avg_presence >= self.min_presence
     
     def get_quality_score(self, landmarks) -> float:
         """

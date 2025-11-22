@@ -23,7 +23,7 @@ from gestures.filters import LandmarkFilter
 from gestures.validators import ConfidenceValidator, QualityValidator
 from gestures.library import basic, advanced
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG, format='%(levelname)s:%(name)s:%(message)s')
 logger = logging.getLogger(__name__)
 
 # MediaPipe setup
@@ -141,11 +141,17 @@ class GestureInputBase:
             if self.is_pinching:
                 self._publish_event("PINCH_RELEASE", {})
                 self.is_pinching = False
+            logger.debug("No hand detected in frame")
             return None
+        
+        logger.debug("✓ Hand detected")
         
         # Validate quality
         if not self.quality_validator.validate(hand_landmarks):
+            logger.debug("✗ Hand quality validation failed")
             return None
+        
+        logger.debug("✓ Hand quality OK")
         
         # Smooth landmarks
         smoothed_landmarks = self.landmark_filter.update(hand_landmarks)
@@ -153,7 +159,13 @@ class GestureInputBase:
         # Detect with production detector
         result = self.detector.detect_best(smoothed_landmarks)
         
+        if result:
+            logger.info(f"🎯 Detected: {result.name} (confidence: {result.confidence:.2f})")
+        else:
+            logger.debug("No gesture detected by detector")
+        
         if result and self.confidence_validator.validate(result):
+            logger.info(f"✅ Publishing gesture: {result.name}")
             # Handle special PINCH_DRAG for legacy compatibility
             if result.name == "PINCH_DRAG":
                 self._handle_pinch_drag(result, hand_landmarks)
@@ -162,6 +174,8 @@ class GestureInputBase:
                 self._publish_event(result.name, result.data)
             
             return result.name
+        elif result:
+            logger.debug(f"✗ Gesture {result.name} failed confidence validation")
         
         return None
     
