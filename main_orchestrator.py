@@ -14,6 +14,7 @@ Example:
 """
 
 import argparse
+import os
 import signal
 import sys
 import time
@@ -25,11 +26,9 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent))
 
 from core.event_system import EventBus
-from inputs.gesture_input import GestureInput
-from inputs.mx_console_input import MXConsoleInput
-from outputs.blender_output import BlenderOutput
-from outputs.loupedeck_output import LoupedeckOutput
-from outputs.system_output import SystemOutput
+# NOTE: inputs/outputs import cv2/mediapipe at module import time. We will
+# import those modules later in main() after parsing args so we can set
+# OPENCV_AVFOUNDATION_SKIP_AUTH before OpenCV loads (macOS specific).
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,7 +45,7 @@ class GestureControlOrchestrator:
     configuration file.
     """
     
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, camera_index_override: int = None):
         """
         Initialize orchestrator.
         
@@ -55,14 +54,16 @@ class GestureControlOrchestrator:
         """
         self.config_path = config_path
         self.config = self._load_config()
-        
+        # Optional override from CLI to pick a different camera than what's in YAML
+        self.camera_index_override = camera_index_override
+
         # Core event bus
         self.event_bus = EventBus()
-        
+
         # Module lists
         self.inputs = []
         self.outputs = []
-        
+
         # Shutdown flag
         self.running = False
     
@@ -86,8 +87,14 @@ class GestureControlOrchestrator:
         
         # Gesture input
         gesture_config = inputs_config.get('gesture', {})
+        # If CLI override provided, inject it into the gesture config
+        if self.camera_index_override is not None:
+            gesture_config = dict(gesture_config)  # copy to avoid mutating loaded config
+            gesture_config['camera_index'] = self.camera_index_override
+
         if gesture_config.get('enabled', False):
             try:
+                # GestureInput is imported in main() before start() is called
                 gesture_input = GestureInput(self.event_bus, gesture_config)
                 self.inputs.append(gesture_input)
                 logger.info("✓ Gesture input initialized")
@@ -219,11 +226,49 @@ def main():
         default='config/event_mappings.yaml',
         help='Path to configuration file (default: config/event_mappings.yaml)'
     )
+    parser.add_argument(
+        '--camera-index',
+        type=int,
+        default=None,
+        help='Optional: override the gesture input camera index from the config (e.g. 0,1,2)'
+    )
+    parser.add_argument(
+        '--skip-avfound-auth',
+        action='store_true',
+        help='Set OPENCV_AVFOUNDATION_SKIP_AUTH=1 before loading OpenCV (macOS)'
+    )
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Enable debug logging'
+    )
     
     args = parser.parse_args()
+    # If requested, set the OpenCV AVFoundation auth-skip env var before importing
+    # any module that may import OpenCV (cv2). This must happen here, early.
+    if args.skip_avfound_auth:
+        os.environ['OPENCV_AVFOUNDATION_SKIP_AUTH'] = '1'
+
+    if args.debug:
+        # raise logging level to DEBUG for all loggers
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    # Import input/output modules now that OPENCV env var is set (if any).
+    # Assign into module globals so other classes (defined above) can reference
+    # the symbols by name.
+    from inputs.gesture_input import GestureInput as _GestureInput
+    from inputs.mx_console_input import MXConsoleInput as _MXConsoleInput
+    from outputs.blender_output import BlenderOutput as _BlenderOutput
+    from outputs.loupedeck_output import LoupedeckOutput as _LoupedeckOutput
+    from outputs.system_output import SystemOutput as _SystemOutput
+    globals()['GestureInput'] = _GestureInput
+    globals()['MXConsoleInput'] = _MXConsoleInput
+    globals()['BlenderOutput'] = _BlenderOutput
+    globals()['LoupedeckOutput'] = _LoupedeckOutput
+    globals()['SystemOutput'] = _SystemOutput
     
-    # Create and run orchestrator
-    orchestrator = GestureControlOrchestrator(args.config)
+    # Create and run orchestrator (pass optional camera index override)
+    orchestrator = GestureControlOrchestrator(args.config, camera_index_override=args.camera_index)
     orchestrator.run()
 
 

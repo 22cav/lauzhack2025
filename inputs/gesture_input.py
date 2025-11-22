@@ -84,8 +84,27 @@ class GestureInput:
         if self.running:
             logger.warning("GestureInput already running")
             return
-        
+        # Try to open the camera on the caller (main) thread so macOS
+        # can present the permission dialog from the main run loop.
+        try:
+            self.cap = cv2.VideoCapture(self.camera_index)
+        except Exception as e:
+            logger.error(f"Error opening camera {self.camera_index}: {e}")
+            self.cap = None
+            return
+
+        if not self.cap or not self.cap.isOpened():
+            logger.error(f"Could not open camera {self.camera_index} (permission denied or busy)")
+            try:
+                if self.cap:
+                    self.cap.release()
+            except Exception:
+                pass
+            self.cap = None
+            return
+
         self.running = True
+        # Start the processing thread; it will use the already-opened self.cap
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
         logger.info("GestureInput started")
@@ -102,14 +121,22 @@ class GestureInput:
     
     def _run(self):
         """Main processing loop (runs in separate thread)."""
-        # Initialize webcam
-        self.cap = cv2.VideoCapture(self.camera_index)
-        
-        if not self.cap.isOpened():
+        # At this point self.cap should already be opened by start() on the
+        # main thread (macOS requires the permission prompt to be requested
+        # from the main run loop). If it's not present, try to open anyway.
+        if self.cap is None:
+            try:
+                self.cap = cv2.VideoCapture(self.camera_index)
+            except Exception as e:
+                logger.error(f"Error opening camera {self.camera_index}: {e}")
+                self.running = False
+                return
+
+        if not self.cap or not self.cap.isOpened():
             logger.error(f"Could not open camera {self.camera_index}")
             self.running = False
             return
-        
+
         logger.info("Camera initialized successfully")
         
         if self.show_preview:
@@ -122,20 +149,36 @@ class GestureInput:
             logger.info("   - Current gesture at top")
             logger.info("=" * 60)
         
+        frame_count = 0
+
         with mp_holistic.Holistic(
             min_detection_confidence=self.min_detection_confidence,
             min_tracking_confidence=self.min_tracking_confidence) as holistic:
             
             while self.running:
                 success, image = self.cap.read()
+                frame_count += 1
                 if not success:
                     logger.warning("Empty camera frame")
                     continue
+
+                # Periodic debug info
+                if frame_count % 30 == 0:
+                    logger.debug(f"Read frame #{frame_count}")
                 
                 # Process frame
                 image.flags.writeable = False
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 results = holistic.process(image)
+
+                # Debug: log whether hands were detected
+                try:
+                    has_right = bool(results.right_hand_landmarks)
+                    has_left = bool(results.left_hand_landmarks)
+                    logger.debug(f"Hands detected - right: {has_right}, left: {has_left}")
+                except Exception:
+                    # results may be None or missing attributes sometimes
+                    logger.debug("Hands detection: results incomplete")
                 
                 # Draw annotations
                 image.flags.writeable = True
@@ -147,23 +190,35 @@ class GestureInput:
                 # Detect gestures
                 self._process_gestures(results)
                 
-                # Show preview
+                # Show preview (if enabled). Wrap display calls to avoid
+                # crashing the worker thread on platforms where GUI calls
+                # must be on the main thread (macOS/AVFoundation issues).
                 if self.show_preview:
-                    # Add gesture text
-                    cv2.putText(image, f"Gesture: {self.state.current_gesture}", 
-                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                    
-                    # Add status text
-                    status_text = "PINCHING" if self.state.is_pinching else "Ready"
-                    cv2.putText(image, f"Status: {status_text}", 
-                               (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-                    
-                    # Show window (imshow creates window automatically)
-                    cv2.imshow('Gesture Recognition - Press ESC to exit', image)
-                    
-                    # Wait for key press
-                    if cv2.waitKey(5) & 0xFF == 27:  # ESC to exit
-                        break
+                    try:
+                        # Add gesture text
+                        cv2.putText(image, f"Gesture: {self.state.current_gesture}",
+                                   (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+                        # Add status text
+                        status_text = "PINCHING" if self.state.is_pinching else "Ready"
+                        cv2.putText(image, f"Status: {status_text}",
+                                   (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+
+                        # Show window (imshow creates window automatically)
+                        cv2.imshow('Gesture Recognition - Press ESC to exit', image)
+
+                        # Wait for key press
+                        if cv2.waitKey(5) & 0xFF == 27:  # ESC to exit
+                            break
+                    except Exception as e:
+                        # Prevent the worker thread from crashing due to GUI
+                        # calls that must run on the main thread on macOS.
+                        logger.warning(f"Disabling preview due to display error: {e}")
+                        try:
+                            cv2.destroyAllWindows()
+                        except Exception:
+                            pass
+                        self.show_preview = False
         
         self.stop()
     
