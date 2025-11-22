@@ -1,3 +1,5 @@
+# Files to ignore
+
 # Python
 __pycache__/
 *.py[cod]
@@ -19,44 +21,37 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 
 # Virtual environments
 venv/
 ENV/
 env/
-.venv
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-*.cover
-
-# IDE
+# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.DS_Store
+
+# Logs
+*.log
+
+# Test coverage
+.coverage
+htmlcov/
 
 # macOS
 .DS_Store
+.AppleDouble
+.LSOverride
 
-# Project-specific
-*.log
-.agent/
-
-# C# / .NET
-bin/
-obj/
-*.dll
-*.exe
-*.pdb
-*.user
-*.suo
-*.cache
-.vs/
-
-# Legacy files (kept for reference but not actively developed)
+# Legacy/obsolete
 GestureControlPlugin/gesture_engine_legacy/
+*.bak
+*.old
+
+# Blender
+*.blend1
+*.blend2

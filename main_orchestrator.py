@@ -20,6 +20,7 @@ import sys
 import time
 import logging
 import yaml
+import platform
 from pathlib import Path
 
 # Add project root to path
@@ -63,6 +64,9 @@ class GestureControlOrchestrator:
         # Module lists
         self.inputs = []
         self.outputs = []
+        
+        # Main thread gesture input (macOS)
+        self.main_thread_gesture_input = None
 
         # Shutdown flag
         self.running = False
@@ -94,12 +98,33 @@ class GestureControlOrchestrator:
 
         if gesture_config.get('enabled', False):
             try:
-                # GestureInput is imported in main() before start() is called
-                gesture_input = GestureInput(self.event_bus, gesture_config)
-                self.inputs.append(gesture_input)
-                logger.info("✓ Gesture input initialized")
+                # Platform-aware gesture input
+                is_macos = platform.system() == "Darwin"
+                show_preview = gesture_config.get('show_preview', True)
+                use_production = gesture_config.get('use_production', True)
+                
+                if use_production:
+                    # Use new production system with auto-detection
+                    from inputs.gesture_input_production import create_gesture_input
+                    gesture_input = create_gesture_input(self.event_bus, gesture_config)
+                    
+                    # Check if it's main-thread mode (macOS)
+                    if hasattr(gesture_input, 'update'):
+                        self.main_thread_gesture_input = gesture_input
+                        logger.info("✓ Gesture input initialized (macOS main-thread mode)")
+                    else:
+                        self.inputs.append(gesture_input)
+                        logger.info("✓ Gesture input initialized (threaded mode)")
+                else:
+                    # Legacy system (GestureInput is imported in main())
+                    gesture_input = GestureInput(self.event_bus, gesture_config)
+                    self.inputs.append(gesture_input)
+                    logger.info("✓ Gesture input initialized (legacy)")
+                    
             except Exception as e:
                 logger.error(f"Failed to initialize gesture input: {e}")
+                import traceback
+                traceback.print_exc()
         
         # MX Console input
         mx_config = inputs_config.get('mx_console', {})
@@ -163,6 +188,13 @@ class GestureControlOrchestrator:
             except Exception as e:
                 logger.error(f"Failed to start input: {e}")
         
+        # Start main-thread gesture input if present
+        if self.main_thread_gesture_input:
+            try:
+                self.main_thread_gesture_input.start()
+            except Exception as e:
+                logger.error(f"Failed to start main-thread gesture input: {e}")
+        
         # Start all outputs
         logger.info("\n📤 Starting output modules...")
         for out in self.outputs:
@@ -207,8 +239,18 @@ class GestureControlOrchestrator:
         
         # Run until interrupted
         try:
-            while self.running:
-                time.sleep(0.1)
+            if self.main_thread_gesture_input:
+                # macOS main-thread mode: call update() in loop
+                logger.info("Running in main-thread mode (macOS)")
+                import cv2
+                while self.running:
+                    if not self.main_thread_gesture_input.update():
+                        break  # User pressed ESC or error
+                    time.sleep(0.001)  # Minimal sleep
+            else:
+                # Standard threaded mode
+                while self.running:
+                    time.sleep(0.1)
         except KeyboardInterrupt:
             logger.info("\nReceived keyboard interrupt")
         finally:

@@ -4,9 +4,16 @@
 inputs:
   gesture:
     enabled: true
+    use_production: true  # Use new production gesture system
+    gesture_sets:
+      - basic     # palm, fist, pointing, peace, thumbs-up, rock-on
+      - advanced  # pinch, swipe, rotate, wave
     camera_index: 0
-    min_detection_confidence: 0.5
-    min_tracking_confidence: 0.5
+    min_detection_confidence: 0.3  # Lower = easier to detect hands
+    min_tracking_confidence: 0.3   # Lower = maintains tracking better
+    min_confidence: 0.4            # Lower = gestures detected easier (was 0.6)
+    stability_frames: 1            # Lower = faster response (was 2)
+    filter_window: 3               # Smaller = less smoothing, faster response
     pinch_threshold: 0.05
     show_preview: true  # IMPORTANT: Shows camera with landmarks
   
@@ -21,10 +28,21 @@ outputs:
     blender_port: 8888
     drag_sensitivity: 100.0
     mappings:
+      # Primary gestures
       PINCH_DRAG: viewport_rotate
       OPEN_PALM: play_animation
       CLOSED_FIST: pause_animation
       POINTING: next_frame
+      
+      # Production gestures
+      PEACE_SIGN: previous_frame
+      THUMBS_UP: toggle_edit_mode
+      SWIPE_RIGHT: next_frame
+      SWIPE_LEFT: previous_frame
+      SWIPE_UP: play_animation
+      SWIPE_DOWN: pause_animation
+      
+      # Buttons (MX Console)
       BUTTON_1_PRESS: toggle_edit_mode
       BUTTON_2_PRESS: previous_frame
       BUTTON_3_PRESS: play_animation
