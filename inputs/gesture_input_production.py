@@ -15,7 +15,8 @@ import platform
 from typing import Optional, Dict, Any
 
 import sys
-sys.path.append('/Users/matte/MDS/Personal/lauzhack')
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
 
 from core.event_system import Event, EventBus, EventType
 from gestures import GestureDetector
