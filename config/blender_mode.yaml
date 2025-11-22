@@ -1,0 +1,36 @@
+# Configuration for Blender mode
+# Gesture and button inputs control Blender viewport and timeline
+
+inputs:
+  gesture:
+    enabled: true
+    camera_index: 0
+    min_detection_confidence: 0.5
+    min_tracking_confidence: 0.5
+    pinch_threshold: 0.05
+    show_preview: true
+  
+  mx_console:
+    enabled: true
+    device_name: "MX Creative Console"
+
+outputs:
+  blender:
+    enabled: true
+    blender_host: localhost
+    blender_port: 8888
+    drag_sensitivity: 100.0
+    mappings:
+      PINCH_DRAG: viewport_rotate
+      OPEN_PALM: play_animation
+      CLOSED_FIST: pause_animation
+      POINTING: next_frame
+      BUTTON_1_PRESS: toggle_edit_mode
+      BUTTON_2_PRESS: previous_frame
+      BUTTON_3_PRESS: play_animation
+  
+  loupedeck:
+    enabled: false
+  
+  system:
+    enabled: false
