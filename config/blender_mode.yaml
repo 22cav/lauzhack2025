@@ -8,7 +8,7 @@ inputs:
     min_detection_confidence: 0.5
     min_tracking_confidence: 0.5
     pinch_threshold: 0.05
-    show_preview: true
+    show_preview: true  # IMPORTANT: Shows camera with landmarks
   
   mx_console:
     enabled: true

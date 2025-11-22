@@ -22,75 +22,51 @@ A modular, event-driven gesture control system that supports multiple input sour
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### 🎨 **Live Demo with Blender** (Recommended)
 
-- Python 3.8+
-- Conda (recommended) or virtualenv
-- Webcam
-- (Optional) MX Creative Console
-- (Optional) Blender 3.0+
-
-### Installation
+See your gestures control Blender in real-time!
 
 ```bash
-# Create conda environment
-conda create -n lauzhack python=3.9 -y
-conda activate lauzhack
-
 # Install dependencies
-cd /Users/matte/MDS/Personal/lauzhack
+conda activate lauzhack
 pip install -r requirements.txt
+
+# Run the demo
+python demo_blender.py
 ```
 
-### Running
+Follow the on-screen instructions to set up the Blender addon. See [DEMO_GUIDE.md](DEMO_GUIDE.md) for details.
+
+### ⚡ **Quick Test** (No Blender needed)
 
 ```bash
-# Default mode (gesture → system actions)
-python main_orchestrator.py
-
-# Blender mode
-python main_orchestrator.py --config config/blender_mode.yaml
-
-# Test mode (gestures only)
+# Test gesture recognition only
 python main_orchestrator.py --config config/test_gesture_only.yaml
 ```
 
-## 📁 Project Structure
+Perform gestures to control system volume and media playback.
 
-```
-lauzhack/
-├── core/                       # Core event system
-│   ├── event_system.py         # EventBus and Event classes
-│   └── __init__.py
-│
-├── inputs/                     # Input modules (event producers)
-│   ├── gesture_input.py        # Gesture recognition with pinch-drag
-│   ├── mx_console_input.py     # MX Creative Console (Bluetooth)
-│   └── __init__.py
-│
-├── outputs/                    # Output modules (event consumers)
-│   ├── blender_output.py       # Blender integration
-│   ├── loupedeck_output.py     # Loupedeck/Logitech plugin
-│   ├── system_output.py        # System actions (volume, media)
-│   └── __init__.py
-│
-├── config/                     # Configuration files
-│   ├── event_mappings.yaml     # Default configuration
-│   ├── blender_mode.yaml       # Blender-specific config
-│   └── test_gesture_only.yaml  # Test configuration
-│
-├── tests/                      # Unit tests
-│   ├── test_event_system.py    # Event system tests
-│   └── __init__.py
-│
-├── GestureControlPlugin/       # Legacy C# Loupedeck plugin
-│   ├── src/                    # C# source
-│   └── gesture_engine/         # Original Python gesture code (deprecated)
-│
-├── main_orchestrator.py        # Main entry point
-├── requirements.txt            # Python dependencies
-└── README.md                   # This file
-```
+## 📋 What You Get
+
+### Camera Visualization
+- ✅ Live camera feed with skeleton tracking
+- ✅ Hand landmarks overlay
+- ✅ Current gesture displayed
+- ✅ Visual feedback for all gestures
+
+### Blender Control
+- ✅ Pinch-drag to rotate viewport
+- ✅ Gestures control timeline and playback
+- ✅ Real-time response
+- ✅ Visual command feedback in Blender
+
+## 📚 Documentation
+
+- **[DEMO_GUIDE.md](DEMO_GUIDE.md)** - Complete Blender demo guide  
+- **[QUICKSTART.md](QUICKSTART.md)** - 5-minute setup guide
+- **[docs/SETUP.md](docs/SETUP.md)** - Detailed setup and configuration
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System design
+- **[docs/README.md](docs/README.md)** - Documentation index
 
 ## 🎮 Supported Gestures
 
@@ -104,124 +80,136 @@ lauzhack/
 - 🖱️ **Pinch Drag** - Move hand while pinching (for viewport control)
 - 🔓 **Pinch Release** - Fingers separate
 
+## 📁 Project Structure
+
+```
+lauzhack/
+├── demo_blender.py         # 🎨 Blender demo launcher
+├── main_orchestrator.py    # Main entry point
+│
+├── blender_addon/          # Blender addon
+│   └── gesture_control_addon.py
+│
+├── core/                   # Core event system
+│   └── event_system.py
+│
+├── inputs/                 # Input modules
+│   ├── gesture_input.py    # Gesture recognition
+│   └── mx_console_input.py # Bluetooth buttons
+│
+├── outputs/                # Output modules
+│   ├── blender_output.py   # Blender integration
+│   ├── loupedeck_output.py # Loupedeck plugin
+│   └── system_output.py    # System actions
+│
+├── config/                 # YAML configurations
+│   ├── event_mappings.yaml
+│   ├── blender_mode.yaml
+│   └── test_gesture_only.yaml
+│
+├── tests/                  # Unit tests
+└── docs/                   # Documentation
+```
+
 ## ⚙️ Configuration
 
-Edit `config/event_mappings.yaml` to customize input sources and output targets:
+Edit `config/event_mappings.yaml` to customize:
 
 ```yaml
 inputs:
   gesture:
     enabled: true
-    camera_index: 0
-    pinch_threshold: 0.05
+    camera_index: 0           # Change if you have multiple cameras
+    pinch_threshold: 0.05     # Adjust sensitivity
   
   mx_console:
-    enabled: false  # Enable if you have MX Creative Console
+    enabled: false            # Set to true if you have MX Console
 
 outputs:
   blender:
-    enabled: true
+    enabled: true             # Blender integration
     mappings:
       PINCH_DRAG: viewport_rotate
       OPEN_PALM: play_animation
   
   system:
-    enabled: true
+    enabled: true             # Volume/media controls
     mappings:
       OPEN_PALM: volumeup
       CLOSED_FIST: volumedown
 ```
 
-## 🎨 Blender Integration
+## 🧪 Testing
 
-### Option 1: External Control (Current)
+```bash
+# Run unit tests
+python -m pytest tests/ -v
 
-1. Start the orchestrator with Blender config:
-   ```bash
-   python main_orchestrator.py --config config/blender_mode.yaml
-   ```
+# Test with Blender demo
+python demo_blender.py
 
-2. In Blender, install the listener addon:
-   - Copy the code from `outputs/blender_output.py` (BLENDER_ADDON_TEMPLATE)
-   - Save as `gesture_listener.py` in Blender addons folder
-   - Enable in Blender preferences
-
-3. Perform gestures to control Blender viewport
-
-### Option 2: Blender Addon (Future)
-
-Package the entire system as a Blender addon with embedded gesture engine.
+# Test gesture recognition only
+python main_orchestrator.py --config config/test_gesture_only.yaml
+```
 
 ## 🔧 Development
 
-### Running Tests
-
-```bash
-# Run all tests
-python -m pytest tests/
-
-# Run specific test
-python -m pytest tests/test_event_system.py
-
-# Run with verbose output
-python -m pytest tests/ -v
-```
-
 ### Adding New Gestures
 
-1. Edit `inputs/gesture_input.py`
-2. Add detection logic in `_detect_basic_gesture()` or create new method
-3. Publish new event type
-4. Map in configuration file
+Edit `inputs/gesture_input.py` → `_detect_basic_gesture()`:
+
+```python
+if extended_fingers == 2:
+    # Peace sign detection
+    return "PEACE_SIGN"
+```
+
+Then map in config:
+```yaml
+mappings:
+  PEACE_SIGN: nexttrack
+```
 
 ### Adding New Outputs
 
-1. Create new file in `outputs/` (e.g., `outputs/my_output.py`)
-2. Implement class with `start()` and `stop()` methods
-3. Subscribe to events in `start()`
+1. Create `outputs/my_output.py`
+2. Implement `start()` and `stop()` methods
+3. Subscribe to events: `event_bus.subscribe(EventType.GESTURE, callback)`
 4. Add to `main_orchestrator.py`
-5. Add configuration section in YAML
+5. Configure in YAML
 
-## 📚 Documentation
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
-- [GUIDE.md](GUIDE.md) - Detailed setup and usage guide
-- [Implementation Plan](/.gemini/antigravity/brain/676d8f7a-6124-4875-ad54-23c965025672/implementation_plan.md) - Architecture design doc
-- [Legacy Docs](docs/) - Original documentation
+## 🎬 Demo Videos
 
-## 🔄 Backward Compatibility
-
-The system maintains full backward compatibility with the existing C# Loupedeck plugin:
-
-```bash
-# Enable Loupedeck output in config
-# config/event_mappings.yaml
-outputs:
-  loupedeck:
-    enabled: true
-    
-# Run orchestrator
-python main_orchestrator.py
-
-# Start C# plugin (in Logitech G Hub)
-# Gestures will be sent to C# plugin as before
-```
+The `demo_blender.py` script provides a complete visual demonstration:
+- Camera window shows live gesture detection
+- Blender window responds in real-time
+- Visual feedback for all commands
 
 ## 🐛 Troubleshooting
 
-### Camera Issues
-- Ensure no other app is using the camera
-- Try different `camera_index` values (0, 1, 2...)
-- Check camera permissions in System Preferences (macOS)
+### Camera Not Working
+- Check `camera_index` in config (try 0, 1, 2...)
+- Close other apps using camera
+- Check permissions (System Preferences → Camera)
 
-### Blender Not Receiving Events
-- Verify Blender listener addon is installed and running
-- Check that port 8888 is not blocked by firewall
-- Look for connection errors in orchestrator logs
+### Blender Not Responding
+- Verify addon is installed and enabled
+- Check port 8888 is not blocked
+- See [DEMO_GUIDE.md](DEMO_GUIDE.md#troubleshooting)
 
-### MX Console Not Detected
-- Ensure `bleak` library is installed: `pip install bleak`
-- Check Bluetooth is enabled
-- Note: MX Console support requires reverse-engineering the Bluetooth protocol
+### Gestures Not Detected
+- Improve lighting
+- Keep hand 30-60cm from camera
+- Lower `min_detection_confidence` in config
+
+## 🆘 Getting Help
+
+1. **Live Demo**: See [DEMO_GUIDE.md](DEMO_GUIDE.md)
+2. **Setup**: See [docs/SETUP.md](docs/SETUP.md)
+3. **Architecture**: See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+4. **Tests**: Run `python -m pytest tests/ -v`
 
 ## 📝 License
 
@@ -233,4 +221,4 @@ Lauzhack Team
 
 ---
 
-**🎉 Enjoy your multi-input gesture control system!**
+**🎉 Try the demo: `python demo_blender.py`**

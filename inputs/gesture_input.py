@@ -112,6 +112,16 @@ class GestureInput:
         
         logger.info("Camera initialized successfully")
         
+        if self.show_preview:
+            logger.info("=" * 60)
+            logger.info("📹 CAMERA WINDOW OPENING - Look for 'Gesture Recognition' window!")
+            logger.info("   The window shows:")
+            logger.info("   - Live camera feed")
+            logger.info("   - Skeleton tracking (green lines)")
+            logger.info("   - Hand landmarks (colored dots)")
+            logger.info("   - Current gesture at top")
+            logger.info("=" * 60)
+        
         with mp_holistic.Holistic(
             min_detection_confidence=self.min_detection_confidence,
             min_tracking_confidence=self.min_tracking_confidence) as holistic:
@@ -139,9 +149,19 @@ class GestureInput:
                 
                 # Show preview
                 if self.show_preview:
+                    # Add gesture text
                     cv2.putText(image, f"Gesture: {self.state.current_gesture}", 
                                (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                    cv2.imshow('Gesture Recognition', image)
+                    
+                    # Add status text
+                    status_text = "PINCHING" if self.state.is_pinching else "Ready"
+                    cv2.putText(image, f"Status: {status_text}", 
+                               (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+                    
+                    # Show window (imshow creates window automatically)
+                    cv2.imshow('Gesture Recognition - Press ESC to exit', image)
+                    
+                    # Wait for key press
                     if cv2.waitKey(5) & 0xFF == 27:  # ESC to exit
                         break
         
