@@ -17,7 +17,7 @@ namespace Loupedeck.ExamplePlugin
     {
         // --- CONFIGURAZIONE PERCORSI ---
         // Percorso assoluto della cartella condivisa
-        private const string BasePath = "/Users/matti/Documents/hackaton/ExamplePlugin/src/Actions/scripts";
+        private const string BasePath = "/Users/matti/Documents/hackaton/lauzhack2025/ExamplePlugin/src/Actions/scripts";
         
         private string ScriptPath => Path.Combine(BasePath, "script_2.py");
         private string MetaPath => Path.Combine(BasePath, "script_2.json");

@@ -7,7 +7,6 @@ import time
 from pathlib import Path
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw
-import playsound
 from gtts import gTTS
 
 # --- CONFIGURATION ---
@@ -19,21 +18,31 @@ API_KEY = os.environ.get("LLM_API_KEY")
 MODEL_NAME = os.environ.get("MODEL_NAME")
 
 
-BASE_PATH = "/Users/matti/Documents/hackaton/ExamplePlugin/src/Actions/scripts"
+BASE_PATH = "/Users/matti/Documents/hackaton/lauzhack2025/ExamplePlugin/src/Actions/scripts"
 TRACKING_FILE = os.path.join(BASE_PATH, "last_created.txt")
-AUDIO_BASE_PATH = "percorso/alla/tua/cartella/audio"
+AUDIO_BASE_PATH = "/Users/matti/Documents/hackaton/lauzhack2025/ExamplePlugin/src/Actions/media"
 
 # Ensure directory exists
 if not os.path.exists(BASE_PATH):
     os.makedirs(BASE_PATH)
 
+def check_mics():
+    print("--- ELENCO MICROFONI RILEVATI ---")
+    mics = sr.Microphone.list_microphone_names()
+    
+    for index, name in enumerate(mics):
+        print(f"Indice [{index}]: {name}")
+        
+    print("-----------------------------------")
+    print("Cerca il tuo microfono reale (es. 'MacBook Pro Microphone', 'AirPods', 'External Mic').")
+
 def announce_feedback(text):
     tts = gTTS(text=text, lang='it')
-    temp_file = "temp_feedback.mp3"
+    temp_file = "final_feedback.mp3"
 
     try:
         tts.save(temp_file)
-        playsound.playsound(temp_file)
+        os.system(f"afplay '{temp_file}'")
     except Exception as e:
         print(f"Errore TTS/Riproduzione: {e}")
     finally:
@@ -44,56 +53,81 @@ def play_feedback(status):
     """It starts an audio file, based on status."""
 
     if status == "success":
-        audio_file = os.path.join(AUDIO_BASE_PATH, "audio_registrato.wav")
+        audio_file = os.path.join(AUDIO_BASE_PATH, "start.mp3")
     elif status == "no_microphone":
-        audio_file = os.path.join(AUDIO_BASE_PATH, "errore_generico.wav")
+        audio_file = os.path.join(AUDIO_BASE_PATH, "start.mp3")
     elif status == "start":
-        audio_file = os.path.join(AUDIO_BASE_PATH, "errore_generico.wav")
+        audio_file = os.path.join(AUDIO_BASE_PATH, "start.mp3")
     elif status == "stop_listening":
-        audio_file = os.path.join(AUDIO_BASE_PATH, "errore_generico.wav")
+        audio_file = os.path.join(AUDIO_BASE_PATH, "working.mp3")
     elif status == "no_talking":
-        audio_file = os.path.join(AUDIO_BASE_PATH, "errore_generico.wav")
+        audio_file = os.path.join(AUDIO_BASE_PATH, "start.mp3")
     elif status == "no_understand":
-        audio_file = os.path.join(AUDIO_BASE_PATH, "errore_generico.wav")
+        audio_file = os.path.join(AUDIO_BASE_PATH, "start.mp3")
     elif status == "unavailable":
-        audio_file = os.path.join(AUDIO_BASE_PATH, "errore_generico.wav")
+        audio_file = os.path.join(AUDIO_BASE_PATH, "start.mp3")
     else:
         return
 
     try:
         # playsound blocks execution until the audio finishes
-        playsound.playsound(audio_file)
+        os.system(f"afplay '{audio_file}'")
     except Exception as e:
         print(f"Errore riproduzione audio: {e}")
 
 def button_color(color):
     """
-    Updates the status icon file to communicate state.
-    Colors: red, yellow, green
+    Updates the status icon file by coloring the stars template.
+    Colors: red, yellow, green. Reset state is white stars.
     """
-    status_icon_path = os.path.join(BASE_PATH, "status_icon.png") # it has to be the same icon as the default one
+    # PERCORSI
+    # Il file che verrà sovrascritto e letto dall'interfaccia
+    status_icon_path = os.path.join(BASE_PATH, "status_icon.png") 
+    # IL NUOVO FILE NECESSARIO: L'immagine originale delle stelle nere trasparenti
+    template_path = os.path.join(BASE_PATH, "star_template.png") 
     
+    if not os.path.exists(template_path):
+        print(f"Errore: Non trovo il file modello: {template_path}")
+        return
+
+    # DEFINIZIONE COLORI (RGB)
+    # Hai chiesto che lo stato iniziale (reset) sia BIANCO.
     colors = {
         "red": (255, 0, 0),
         "yellow": (255, 255, 0),
         "green": (0, 255, 0),
-        "reset": (0, 0, 0)
+        "reset": (255, 255, 255) # Bianco per il reset
     }
     
-    rgb = colors.get(color, (0, 0, 0))
+    # Ottieni il colore RGB desiderato, default bianco se non trovato
+    target_rgb = colors.get(color, (255, 255, 255))
     
     try:
-        img = Image.new('RGB', (80, 80), color=rgb)
-        img.save(status_icon_path)
+        # 1. Apri il template e convertilo in RGBA (per sicurezza sulla trasparenza)
+        template_img = Image.open(template_path).convert("RGBA")
+        
+        # 2. Estrai il canale Alpha.
+        # Questa diventa una maschera in scala di grigi: 
+        # bianco dove ci sono le stelle, nero dove è trasparente.
+        alpha_mask = template_img.getchannel('A')
+        
+        # 3. Crea un'immagine completamente solida del colore target
+        # Aggiungiamo (255,) per renderla completamente opaca
+        solid_color_layer = Image.new('RGBA', template_img.size, target_rgb + (255,))
+        
+        # 4. Crea l'immagine finale, partendo da una base completamente trasparente
+        final_img = Image.new('RGBA', template_img.size, (0, 0, 0, 0))
+        
+        # 5. Incolla il livello di colore solido usando la maschera alpha.
+        # Il colore verrà applicato SOLO dove la maschera alpha dice che ci sono le stelle.
+        final_img.paste(solid_color_layer, mask=alpha_mask)
+        
+        # Salva il risultato sovrascrivendo l'icona di stato
+        final_img.save(status_icon_path)
+        print(f"Status icon updated to color: {color}")
+        
     except Exception as e:
         print(f"Error updating status icon: {e}")
-        
-    if color in ["red", "green"]:
-        time.sleep(2)
-        button_color("reset")
-
-
-
 
 def listen_to_microphone():
     """
@@ -105,17 +139,18 @@ def listen_to_microphone():
     r.non_speaking_duration = 0.5 
 
     try:
-        with sr.Microphone() as source:
+        with sr.Microphone(device_index=0) as source:
+            play_feedback("start")
             print("Calibrating for ambient noise... please wait.")
             button_color("yellow")
             r.adjust_for_ambient_noise(source, duration=1)
-            play_feedback("start")
             button_color("green")
             print(f"Listening... (Will stop after {r.pause_threshold}s of silence)")
-            play_feedback("stop_listening")
             
             try:
                 audio = r.listen(source, timeout=10)
+                
+                
             except sr.WaitTimeoutError:
                 print("Timeout: No speech detected.")
                 play_feedback("no_talking")
@@ -126,8 +161,9 @@ def listen_to_microphone():
         return None
 
     try:
-        button_color("yellow")
         print("Recognizing...")
+        play_feedback("stop_listening")
+        button_color("yellow")
         text = r.recognize_google(audio, language="en-US") 
         print(f"You said: {text}")
         return text
@@ -188,6 +224,8 @@ def from_transcription_to_data(transcription):
         result_json = response.json()
         content = result_json['choices'][0]['message']['content']
 
+        print(f"got response: {content}")
+
         # Clean up markdown
         clean_content = content.replace("```json", "").replace("```", "").strip()
         
@@ -220,11 +258,13 @@ def from_transcription_to_data(transcription):
                 ],
                 "temperature": 0.2
             }
+            print("Sending request to {API_ENDPOINT}...")
             response = requests.post(API_ENDPOINT, headers=headers, json=audio_payload)
             response.raise_for_status()
             
             result_json = response.json()
             content = result_json['choices'][0]['message']['content']
+            print(f"got response: {content}")
 
             # Clean up markdown
             clean_content = content.replace("```json", "").replace("```", "").strip()
@@ -342,10 +382,14 @@ def save_action_files(cmd_name, code):
 
 def main():
     print("--- Voice to C# Plugin Action Generator ---")
+    button_color("reset")
+
     
     text = listen_to_microphone()
     if not text:
         button_color("red")
+        time.sleep(1)
+        button_color("reset")
         return
 
     print("\nGenerating immediate execution script...")
@@ -354,11 +398,16 @@ def main():
     if cmd_name and code:
         if not save_action_files(cmd_name, code):
             button_color("red")
+            time.sleep(1)
+            button_color("reset")
             print("Error during saving action files.")
             return
     else:
         button_color("red")
+        time.sleep(1)
+        button_color("reset")
         print("Failed to generate valid code or name from LLM.")
 
 if __name__ == "__main__":
     main()
+    

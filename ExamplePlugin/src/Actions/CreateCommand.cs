@@ -1,54 +1,68 @@
 namespace Loupedeck.ExamplePlugin
 {
     using System;
-
-    // This class implements an example command that counts button presses.
+    using System.IO; // Aggiunto per brevità
 
     public class CreateCommand : PluginDynamicCommand
     {
+        // 1. Dichiariamo il watcher a livello di classe (così vive per sempre)
+        private FileSystemWatcher _watcher;
+        
+        // Percorsi (meglio tenerli qui per usarli ovunque)
+        private const string ScriptPath = "/Users/matti/Documents/hackaton/lauzhack2025/ExamplePlugin/src/Actions/scripts/create.py";
+        private const string IconFolder = "/Users/matti/Documents/hackaton/lauzhack2025/ExamplePlugin/src/Actions/scripts";
+        private const string IconFile = "status_icon.png";
 
-        // Initializes the command class.
         public CreateCommand()
             : base(displayName: "Create Command", description: "Create a new command", groupName: "Commands")
         {
+            // 2. Inizializziamo il Watcher SUBITO, appena il plugin parte
+            InitializeWatcher();
         }
 
-        // This method is called when the user executes the command.
+        private void InitializeWatcher()
+        {
+            try 
+            {
+                if (!Directory.Exists(IconFolder)) return;
+
+                _watcher = new FileSystemWatcher(IconFolder, IconFile);
+                
+                // Monitoriamo tutto: scrittura, creazione, dimensione
+                _watcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.CreationTime | NotifyFilters.Size;
+
+                // Quando il file cambia, ricarica l'immagine
+                _watcher.Changed += (s, e) => { this.ActionImageChanged(null); }; // null aggiorna tutte le istanze
+                _watcher.Created += (s, e) => { this.ActionImageChanged(null); };
+                // Importante: a volte i file vengono sovrascritti non modificati
+                _watcher.Renamed += (s, e) => { this.ActionImageChanged(null); };
+
+                _watcher.EnableRaisingEvents = true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Watcher Error: " + ex.Message);
+            }
+        }
+
         protected override void RunCommand(String actionParameter)
         {
-            // DEBUG: Continuiamo a usare /tmp per sicurezza
             string desktopLog = "/tmp/MX_DEBUG.txt";
 
             try
             {
-                // --- HARDCODED PATH (La via veloce) ---
-                string scriptPath = "/Users/matti/Documents/hackaton/ExamplePlugin/src/Actions/scripts/create.py";
+                File.AppendAllText(desktopLog, $"\n[{DateTime.Now}] BUTTON PRESSED.\n");
 
-                // Log iniziale
-                System.IO.File.AppendAllText(desktopLog, $"\n[{DateTime.Now}] BUTTON PRESSED.\n");
-                System.IO.File.AppendAllText(desktopLog, $"Target Script: {scriptPath}\n");
-
-                // Controllo esistenza file (Cruciale)
-                if (!System.IO.File.Exists(scriptPath))
+                if (!File.Exists(ScriptPath))
                 {
-                    System.IO.File.AppendAllText(desktopLog, "ERROR: File Python non trovato in quel percorso!\n");
+                    File.AppendAllText(desktopLog, "ERROR: Script non trovato!\n");
                     return;
-                // TODO: CONTROLLARE SE QUESTE 10 RIGHE FUNZIONANO
-                using (var watcher = new System.IO.FileSystemWatcher(scriptFolder, "status_icon.png"))
-                {
-                    watcher.NotifyFilter = System.IO.NotifyFilters.LastWrite | System.IO.NotifyFilters.CreationTime;
-                    watcher.Changed += (s, e) => {
-                        // Trigger UI update when icon changes
-                        this.ActionImageChanged(actionParameter);
-                    };
-                    watcher.Created += (s, e) => {
-                        this.ActionImageChanged(actionParameter);
-                    };
-                    watcher.EnableRaisingEvents = true;
+                }
 
                 var startInfo = new System.Diagnostics.ProcessStartInfo();
-                startInfo.FileName = "/usr/bin/python3";
-                startInfo.Arguments = $"\"{scriptPath}\"";
+                // Usa il python del venv come facevi
+                startInfo.FileName = "/Users/matti/Documents/hackaton/lauzhack2025/ExamplePlugin/src/Actions/.venv/bin/python"; 
+                startInfo.Arguments = $"\"{ScriptPath}\"";
                 startInfo.UseShellExecute = false;
                 startInfo.CreateNoWindow = true;
                 startInfo.RedirectStandardOutput = true;
@@ -56,61 +70,58 @@ namespace Loupedeck.ExamplePlugin
 
                 using (var process = System.Diagnostics.Process.Start(startInfo))
                 {
-                    // Catturiamo l'output per capire se Python parte
+                    // Leggiamo l'output per debug
                     string stderr = process.StandardError.ReadToEnd();
                     string stdout = process.StandardOutput.ReadToEnd();
                     process.WaitForExit();
 
                     if (!string.IsNullOrEmpty(stderr))
-                        System.IO.File.AppendAllText(desktopLog, $"PYTHON ERROR: {stderr}\n");
+                        File.AppendAllText(desktopLog, $"PYTHON ERROR: {stderr}\n");
                     else
-                        System.IO.File.AppendAllText(desktopLog, $"PYTHON SUCCESS: {stdout}\n");
+                        File.AppendAllText(desktopLog, $"PYTHON SUCCESS: {stdout}\n");
                 }
-                // TODO: CONTROLLARE SE SERVE E FUNZIONA Final update to ensure we reset if needed
+                
+                // Forziamo un aggiornamento manuale alla fine per sicurezza
                 this.ActionImageChanged(actionParameter);
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(desktopLog, $"C# CRASH: {ex.Message}\n");
+                File.AppendAllText(desktopLog, $"C# CRASH: {ex.Message}\n");
             }
         }
 
-        // This method is called when Loupedeck needs to show the command on the console or the UI.
-        protected override String GetCommandDisplayName(String actionParameter, PluginImageSize imageSize) =>
-            "Create";
+        protected override String GetCommandDisplayName(String actionParameter, PluginImageSize imageSize) => "Create";
 
         protected override BitmapImage GetCommandImage(String actionParameter, PluginImageSize imageSize)
-        {   // TODO: MODIFICARE QUI PER CARICARE L'ICONA DINAMICAMENTE E QUESTO PEZZO DA CONTROLLARE
-            string scriptPath = @"c:\Users\luca_\OneDrive\Desktop\Unpoditutto\EPFL\hackathon\lauzhack2025\ExamplePlugin\src\Actions\scripts\create.py";
-            string statusIconPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(scriptPath), "status_icon.png");
+        {
+            string fullIconPath = Path.Combine(IconFolder, IconFile);
 
-            if (System.IO.File.Exists(statusIconPath))
+            // Retry logic: se Python sta scrivendo, C# potrebbe fallire la lettura. Riprova brevemente.
+            for (int i = 0; i < 3; i++) 
             {
                 try
                 {
-                    // Read file into memory to avoid locking it
-                    using (var stream = new System.IO.FileStream(statusIconPath, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite))
+                    if (File.Exists(fullIconPath))
                     {
-                        using (var memoryStream = new System.IO.MemoryStream())
+                        using (var stream = new FileStream(fullIconPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                         {
-                            stream.CopyTo(memoryStream);
-                            memoryStream.Position = 0;
-                            // Assuming BitmapImage can be created from stream or we use BitmapBuilder
-                            // Loupedeck SDK usually has BitmapImage.FromArray or similar, but let's try standard way if available
-                            // or fallback to BitmapBuilder if we can't easily load png.
-                            // Actually, Loupedeck's BitmapImage can be constructed from byte array.
-                            return BitmapImage.FromArray(memoryStream.ToArray());
+                            using (var memoryStream = new MemoryStream())
+                            {
+                                stream.CopyTo(memoryStream);
+                                return BitmapImage.FromArray(memoryStream.ToArray());
+                            }
                         }
                     }
                 }
-                catch
+                catch (IOException) 
                 {
-                    // Fallback if reading fails
+                    System.Threading.Thread.Sleep(50); // Aspetta 50ms e riprova se il file è bloccato
                 }
             }
-            // TODO: MODIFICARE QUA CHE SE RIUSCIAMO A PASSARE IL TESTO DEL COLORE INVECE DELL'ICONA è TOP
+
+            // Fallback
             var builder = new BitmapBuilder(imageSize);
-            builder.DrawText("Create");
+            builder.DrawText("...");
             return builder.ToImage();
         }
     }
