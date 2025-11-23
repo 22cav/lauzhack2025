@@ -22,13 +22,17 @@ outputs:
     enabled: true
     blender_host: localhost
     blender_port: 8888
-    drag_sensitivity: 100.0
+    drag_sensitivity: 1.0  # Direct multiplier (sensitivity handled in Blender)
     mappings:
-      PINCH_DRAG: viewport_rotate
-      OPEN_PALM: play_animation
-      CLOSED_FIST: pause_animation
-      POINTING: next_frame
-      BUTTON_1_PRESS: toggle_edit_mode
+      # Direct one-to-one gesture-to-command mappings
+      PINCH_DRAG: rotate_viewport      # Pinch + drag → Rotate view (yaw + pitch)
+      ROTATE: rotate_viewport          # Alternative name for PINCH rotation
+      OPEN_PALM: play_animation        # Open palm → Play animation
+      CLOSED_FIST: stop_animation      # Closed fist → Stop animation
+      PLAY: play_animation             # Alternative PLAY command
+      STOP: stop_animation             # Alternative STOP command
+      V_GESTURE: pan_viewport          # V-gesture → Pan viewport
+      NAVIGATE: pan_viewport           # Alternative navigation command
   
   loupedeck:
     enabled: false  # Set to true to use with C# Loupedeck plugin

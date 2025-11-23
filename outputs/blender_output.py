@@ -137,13 +137,21 @@ class BlenderOutput:
         }
         
         # Add event-specific data
-        if action == 'PINCH_DRAG':
-            # Viewport rotation based on hand movement
-            delta = event.data.get('delta', {})
-            command_data['rotation'] = {
-                'x': delta.get('dy', 0) * self.drag_sensitivity,  # Vertical mouse = X axis rotation
-                'y': delta.get('dx', 0) * self.drag_sensitivity   # Horizontal mouse = Y axis rotation
-            }
+        if action in ['PINCH_DRAG', 'ROTATE']:
+            # Direct dx/dy for viewport rotation (yaw + pitch)
+            # event.data now contains dx/dy directly from gesture_input_production
+            dx = event.data.get('dx', 0)
+            dy = event.data.get('dy', 0)
+            command_data['dx'] = dx * self.drag_sensitivity
+            command_data['dy'] = dy * self.drag_sensitivity
+            
+        elif action in ['V_GESTURE', 'NAVIGATE']:
+            # Direct dx/dy for viewport panning
+            dx = event.data.get('dx', 0)
+            dy = event.data.get('dy', 0)
+            command_data['dx'] = dx * self.drag_sensitivity
+            command_data['dy'] = dy * self.drag_sensitivity
+            
         elif action.startswith('BUTTON_'):
             # Pass button data
             command_data['button_id'] = event.data.get('button_id')

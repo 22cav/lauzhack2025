@@ -27,6 +27,8 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent))
 
 from core.event_system import EventBus
+# from core.launcher import launch_blender  <-- REMOVED: No longer needed
+
 # NOTE: inputs/outputs import cv2/mediapipe at module import time. We will
 # import those modules later in main() after parsing args so we can set
 # OPENCV_AVFOUNDATION_SKIP_AUTH before OpenCV loads (macOS specific).
@@ -70,6 +72,9 @@ class GestureControlOrchestrator:
 
         # Shutdown flag
         self.running = False
+        
+        # Subprocesses
+        self.blender_process = None
     
     def _load_config(self) -> dict:
         """Load configuration from YAML file."""
@@ -144,9 +149,13 @@ class GestureControlOrchestrator:
         blender_config = outputs_config.get('blender', {})
         if blender_config.get('enabled', False):
             try:
+                # --- MODIFIED: Auto-launch logic removed completely ---
+                # We simply initialize the connection class, assuming Blender 
+                # is already running or will be started manually.
+                
                 blender_output = BlenderOutput(self.event_bus, blender_config)
                 self.outputs.append(blender_output)
-                logger.info("✓ Blender output initialized")
+                logger.info("✓ Blender output initialized (External process launch disabled)")
             except Exception as e:
                 logger.error(f"Failed to initialize Blender output: {e}")
         
@@ -207,6 +216,7 @@ class GestureControlOrchestrator:
         
         logger.info("\n" + "=" * 60)
         logger.info("✅ System running")
+        logger.info("👀 Listening for commands...")
         logger.info("⌨️  Press Ctrl+C to exit")
         logger.info("=" * 60 + "\n")
     
@@ -229,6 +239,15 @@ class GestureControlOrchestrator:
                 out.stop()
             except Exception as e:
                 logger.error(f"Error stopping output: {e}")
+        
+        # Stop Blender if we started it (Logic kept for safety, though it will be None)
+        if self.blender_process:
+            logger.info("Terminating Blender process...")
+            try:
+                self.blender_process.terminate()
+                self.blender_process.wait(timeout=5)
+            except Exception as e:
+                logger.error(f"Error stopping Blender: {e}")
         
         logger.info("✓ Shutdown complete")
     

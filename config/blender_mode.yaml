@@ -1,54 +1,46 @@
-# Configuration for Blender mode
-# Gesture and button inputs control Blender viewport and timeline
+# Configuration for Blender Mode
+# Maps gestures to Blender commands
 
 inputs:
   gesture:
     enabled: true
-    use_production: true  # Use new production gesture system
-    gesture_sets:
-      - basic     # palm, fist, pointing, peace, thumbs-up, rock-on
-      - advanced  # pinch, swipe, rotate, wave
     camera_index: 0
-    min_detection_confidence: 0.3  # Lower = easier to detect hands
-    min_tracking_confidence: 0.3   # Lower = maintains tracking better
-    min_confidence: 0.4            # Lower = gestures detected easier (was 0.6)
-    stability_frames: 1            # Lower = faster response (was 2)
-    filter_window: 3               # Smaller = less smoothing, faster response
-    pinch_threshold: 0.05
-    show_preview: true  # IMPORTANT: Shows camera with landmarks
-  
+    min_detection_confidence: 0.5
+    min_tracking_confidence: 0.5
+    min_confidence: 0.5  # Lower for better detection
+    stability_frames: 1  # Faster response
+    filter_window: 3     # Less smoothing
+    show_preview: true
+    use_production: true
+    gesture_sets: ['navigation']  # Only load navigation gestures
+    
   mx_console:
-    enabled: true
-    device_name: "MX Creative Console"
+    enabled: false
 
 outputs:
   blender:
     enabled: true
-    blender_host: localhost
+    blender_host: "localhost"
     blender_port: 8888
-    drag_sensitivity: 100.0
+    auto_launch_blender: true
+    # blender_path: "/Applications/Blender.app/Contents/MacOS/Blender" # Optional, will auto-detect if commented
     mappings:
-      # Primary gestures
-      PINCH_DRAG: viewport_rotate
-      OPEN_PALM: play_animation
-      CLOSED_FIST: pause_animation
-      POINTING: next_frame
+      # Control Modality (direct one-to-one)
+      ROTATE: rotate_viewport          # Pinch + drag → Rotate (yaw + pitch)
+      PINCH_DRAG: rotate_viewport      # Alternative name
+      PLAY: play_animation             # Open palm → Play
+      OPEN_PALM: play_animation        # Alternative name
+      STOP: stop_animation             # Fist → Stop
+      CLOSED_FIST: stop_animation      # Alternative name
       
-      # Production gestures
-      PEACE_SIGN: previous_frame
-      THUMBS_UP: toggle_edit_mode
-      SWIPE_RIGHT: next_frame
-      SWIPE_LEFT: previous_frame
-      SWIPE_UP: play_animation
-      SWIPE_DOWN: pause_animation
+      # Navigation Modality
+      NAVIGATE: pan_viewport           # V-gesture → Pan camera
+      V_GESTURE: pan_viewport          # Alternative name
       
-      # Buttons (MX Console)
-      BUTTON_1_PRESS: toggle_edit_mode
-      BUTTON_2_PRESS: previous_frame
-      BUTTON_3_PRESS: play_animation
-  
   loupedeck:
     enabled: false
-  
-  system:
-    enabled: false
+    loupedeck_host: "localhost"
+    loupedeck_port: 5000
+    mappings:
+      OPEN_PALM: "PLAY"
+      CLOSED_FIST: "STOP"

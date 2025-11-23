@@ -22,7 +22,7 @@ from core.event_system import Event, EventBus, EventType
 from gestures import GestureDetector
 from gestures.filters import LandmarkFilter
 from gestures.validators import ConfidenceValidator, QualityValidator
-from gestures.library import basic, advanced
+from gestures.library import navigation
 
 logging.basicConfig(level=logging.DEBUG, format='%(levelname)s:%(name)s:%(message)s')
 logger = logging.getLogger(__name__)
@@ -63,50 +63,46 @@ class GestureInputBase:
         self.running = False
         
         # Production gesture system
-        self.detector = GestureDetector(min_confidence=config.get('min_confidence', 0.6))
-        self.landmark_filter = LandmarkFilter(window_size=config.get('filter_window', 5))
+        self.detector = GestureDetector(min_confidence=config.get('min_confidence', 0.6)) # Lowered for better detection
+        self.landmark_filter = LandmarkFilter(window_size=config.get('filter_window', 3)) # Reduced smoothing
         self.confidence_validator = ConfidenceValidator(
-            min_confidence=config.get('min_confidence', 0.6),
-            stability_frames=config.get('stability_frames', 2)
+            min_confidence=config.get('min_confidence', 0.5),
+            stability_frames=config.get('stability_frames', 1) # Faster response
         )
         self.quality_validator = QualityValidator()
         
-        # Load gestures from config
-        gesture_sets = config.get('gesture_sets', ['basic', 'advanced'])
-        self._load_gestures(gesture_sets)
+        # Load gestures from navigation library
+        self._load_gestures()
         
-        # Legacy pinch state for backward compatibility
+        # State Machine
+        self.is_playing = True
         self.is_pinching = False
-        self.last_hand_pos = None
         self.pinch_start_pos = None
+        self.last_pinch_pos = None
+        
+        # V-gesture movement tracking
+        self.is_v_gesturing = False
+        self.last_v_pos = None
+        
+        # Feedback state
+        self.last_command = "None"
+        self.last_confidence = 0.0
         
         logger.info(f"GestureInputBase initialized with {len(self.detector.gestures)} gestures")
     
-    def _load_gestures(self, sets: list):
-        """Load gesture sets into detector."""
+    def _load_gestures(self):
+        """Load navigation gestures."""
         loaded_count = 0
+        for attr_name in dir(navigation):
+            attr = getattr(navigation, attr_name)
+            if isinstance(attr, type) and hasattr(attr, 'detect'):
+                try:
+                    self.detector.register(attr())
+                    loaded_count += 1
+                except:
+                    pass
         
-        if 'basic' in sets:
-            for attr_name in dir(basic):
-                attr = getattr(basic, attr_name)
-                if isinstance(attr, type) and hasattr(attr, 'detect'):
-                    try:
-                        self.detector.register(attr())
-                        loaded_count += 1
-                    except:
-                        pass
-        
-        if 'advanced' in sets:
-            for attr_name in dir(advanced):
-                attr = getattr(advanced, attr_name)
-                if isinstance(attr, type) and hasattr(attr, 'detect'):
-                    try:
-                        self.detector.register(attr())
-                        loaded_count += 1
-                    except:
-                        pass
-        
-        logger.info(f"Loaded {loaded_count} gestures from sets: {sets}")
+        logger.info(f"Loaded {loaded_count} navigation gestures")
     
     def _initialize_camera(self):
         """Initialize webcam."""
@@ -122,13 +118,6 @@ class GestureInputBase:
     def _process_frame(self, image, results) -> Optional[str]:
         """
         Process a single frame and detect gestures.
-        
-        Args:
-            image: OpenCV image (BGR)
-            results: MediaPipe holistic results
-        
-        Returns:
-            Detected gesture name or None
         """
         # Draw landmarks if preview enabled
         if self.show_preview:
@@ -138,21 +127,20 @@ class GestureInputBase:
         hand_landmarks = results.right_hand_landmarks or results.left_hand_landmarks
         
         if hand_landmarks is None:
-            # Reset pinch state for legacy compatibility
+            # Reset pinch state
             if self.is_pinching:
-                self._publish_event("PINCH_RELEASE", {})
                 self.is_pinching = False
-            logger.debug("No hand detected in frame")
+                self.pinch_start_pos = None
+                self.last_pinch_pos = None
+            
+            self.last_command = "None"
+            self.last_confidence = 0.0
             return None
-        
-        logger.debug("✓ Hand detected")
         
         # Validate quality
         if not self.quality_validator.validate(hand_landmarks):
-            logger.debug("✗ Hand quality validation failed")
+            self.last_command = "Low Quality"
             return None
-        
-        logger.debug("✓ Hand quality OK")
         
         # Smooth landmarks
         smoothed_landmarks = self.landmark_filter.update(hand_landmarks)
@@ -160,50 +148,114 @@ class GestureInputBase:
         # Detect with production detector
         result = self.detector.detect_best(smoothed_landmarks)
         
-        if result:
-            logger.info(f"🎯 Detected: {result.name} (confidence: {result.confidence:.2f})")
-        else:
-            logger.debug("No gesture detected by detector")
-        
         if result and self.confidence_validator.validate(result):
-            logger.info(f"✅ Publishing gesture: {result.name}")
-            # Handle special PINCH_DRAG for legacy compatibility
-            if result.name == "PINCH_DRAG":
-                self._handle_pinch_drag(result, hand_landmarks)
-            else:
-                # Publish standard gesture event
-                self._publish_event(result.name, result.data)
+            gesture_name = result.name
+            self.last_confidence = result.confidence
             
-            return result.name
-        elif result:
-            logger.debug(f"✗ Gesture {result.name} failed confidence validation")
+            # State Machine Logic
+            if gesture_name == "CLOSED_FIST":
+                if self.is_playing:
+                    self.is_playing = False
+                    logger.info("🛑 Simulation STOPPED")
+                    self._publish_event("STOP", {})
+                self.last_command = "STOP (Fist)"
+                return "CLOSED_FIST"
+                
+            elif gesture_name == "OPEN_PALM":
+                if not self.is_playing:
+                    self.is_playing = True
+                    logger.info("▶️ Simulation STARTED")
+                    self._publish_event("PLAY", {})
+                self.last_command = "PLAY (Palm)"
+                return "OPEN_PALM"
+            
+            if not self.is_playing:
+                self.last_command = "STOPPED (Waiting...)"
+                return "STOPPED"
+
+            # Handle Pinch Drag
+            if gesture_name == "PINCH":
+                self._handle_pinch_drag(result, hand_landmarks)
+                self.last_command = "ROTATING (Pinch)"
+                return "PINCH_DRAG"
+            # Handle V-gesture Movement
+            elif gesture_name == "V_GESTURE":
+                self._handle_v_movement(result)
+                self.last_command = "NAVIGATING (V)"
+                return "V_NAVIGATE"
+            else:
+                # Reset pinch/V if we detect something else
+                self.is_pinching = False
+                self.pinch_start_pos = None
+                self.is_v_gesturing = False
+                self.last_v_pos = None
+                
+                # Publish other gestures
+                self._publish_event(gesture_name, result.data)
+                
+                # Format for display
+                self.last_command = gesture_name.replace("_", " ").title()
+                logger.info(f"🎯 Command: {self.last_command}")
+                return gesture_name
         
+        self.last_command = "None"
         return None
     
     def _handle_pinch_drag(self, result, hand_landmarks):
-        """Handle PINCH_DRAG with legacy-compatible delta calculation."""
-        wrist = hand_landmarks.landmark[mp_holistic.HandLandmark.WRIST]
-        current_pos = {'x': wrist.x, 'y': wrist.y, 'z': wrist.z}
+        """Handle PINCH_DRAG with proportional rotation."""
+        # Use the pinch position from result data if available, else wrist
+        current_pos = result.data.get('position', None)
+        if not current_pos:
+            wrist = hand_landmarks.landmark[mp_holistic.HandLandmark.WRIST]
+            current_pos = {'x': wrist.x, 'y': wrist.y}
         
-        # Calculate delta from last position
-        if self.last_hand_pos:
-            delta = {
-                'dx': current_pos['x'] - self.last_hand_pos['x'],
-                'dy': current_pos['y'] - self.last_hand_pos['y']
-            }
-            
-            self._publish_event("PINCH_DRAG", {
-                "position": current_pos,
-                "delta": delta,
-                "start_position": self.pinch_start_pos or current_pos
-            })
-        else:
-            # First pinch drag frame
+        if not self.is_pinching:
+            # Start pinching
+            self.is_pinching = True
             self.pinch_start_pos = current_pos
+            self.last_pinch_pos = current_pos
+        else:
+            # Dragging
+            dx = current_pos['x'] - self.last_pinch_pos['x']
+            dy = current_pos['y'] - self.last_pinch_pos['y']
+            
+            # Scale up a bit
+            sensitivity = 5.0
+            
+            if abs(dx) > 0.001 or abs(dy) > 0.001:
+                self._publish_event("ROTATE", {
+                    "dx": dx * sensitivity,
+                    "dy": dy * sensitivity
+                })
+            
+            self.last_pinch_pos = current_pos
+
+    def _handle_v_movement(self, result):
+        """Handle V-gesture movement for navigation."""
+        current_pos = result.data.get('position', None)
+        if not current_pos:
+            return
         
-        self.last_hand_pos = current_pos
-        self.is_pinching = True
-    
+        if not self.is_v_gesturing:
+            # Start V-gesturing
+            self.is_v_gesturing = True
+            self.last_v_pos = current_pos
+        else:
+            # Moving
+            # Note: Camera coordinates are mirrored, so negate dx for proper direction
+            dx = -(current_pos['x'] - self.last_v_pos['x'])  # Negate for mirror correction
+            dy = current_pos['y'] - self.last_v_pos['y']
+            
+            sensitivity = 5.0
+            
+            if abs(dx) > 0.001 or abs(dy) > 0.001:
+                self._publish_event("NAVIGATE", {
+                    "dx": dx * sensitivity,
+                    "dy": dy * sensitivity
+                })
+            
+            self.last_v_pos = current_pos
+
     def _draw_landmarks(self, image, results):
         """Draw pose and hand landmarks."""
         mp_drawing.draw_landmarks(
@@ -217,6 +269,31 @@ class GestureInputBase:
         mp_drawing.draw_landmarks(
             image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
     
+    def _draw_status(self, image):
+        """Draw status overlay on image."""
+        # Status Background
+        h, w, _ = image.shape
+        
+        # Top bar for status
+        cv2.rectangle(image, (0, 0), (w, 80), (0, 0, 0), -1)
+        
+        # System State (PLAYING/STOPPED)
+        status_text = "PLAYING" if self.is_playing else "STOPPED"
+        status_color = (0, 255, 0) if self.is_playing else (0, 0, 255)
+        cv2.putText(image, f"SYSTEM: {status_text}", 
+                   (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, status_color, 2)
+        
+        # Current Command
+        cmd_color = (255, 255, 0) # Cyan
+        cv2.putText(image, f"CMD: {self.last_command}", 
+                   (300, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, cmd_color, 2)
+                   
+        # Confidence bar if command detected
+        if self.last_command != "None" and self.last_confidence > 0:
+            bar_width = int(self.last_confidence * 200)
+            cv2.rectangle(image, (300, 55), (300 + bar_width, 65), (0, 255, 255), -1)
+            cv2.rectangle(image, (300, 55), (500, 65), (255, 255, 255), 1)
+    
     def _publish_event(self, action: str, data: Dict[str, Any]):
         """Publish gesture event to EventBus."""
         event = Event(
@@ -226,7 +303,7 @@ class GestureInputBase:
             data=data
         )
         self.event_bus.publish(event)
-        logger.debug(f"Published: {action}")
+        # logger.debug(f"Published: {action}") # Reduce noise, rely on command log
 
 
 class GestureInput(GestureInputBase):
@@ -287,13 +364,11 @@ class GestureInput(GestureInputBase):
                 image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
                 
                 # Detect gestures
-                detected = self._process_frame(image, results)
+                self._process_frame(image, results)
                 
                 # Show preview (may not work on macOS)
                 if self.show_preview:
-                    if detected:
-                        cv2.putText(image, f"Gesture: {detected}", 
-                                   (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    self._draw_status(image)
                     cv2.imshow('Gesture Recognition', image)
                     if cv2.waitKey(5) & 0xFF == 27:
                         break
@@ -368,13 +443,12 @@ class GestureInputMainThread(GestureInputBase):
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         
         # Detect gestures
-        detected = self._process_frame(image, results)
+        self._process_frame(image, results)
         
         # Show preview (works in main thread on macOS)
         if self.show_preview:
-            if detected:
-                cv2.putText(image, f"Gesture: {detected}", 
-                           (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            self._draw_status(image)
+            
             cv2.putText(image, "macOS Mode (Press ESC to exit)",
                        (10, image.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             cv2.imshow('Gesture Recognition - macOS', image)
