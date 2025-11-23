@@ -8,7 +8,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw
 from gtts import gTTS
-import re
 
 # --- CONFIGURATION ---
 load_dotenv()
@@ -38,7 +37,7 @@ def check_mics():
     print("Cerca il tuo microfono reale (es. 'MacBook Pro Microphone', 'AirPods', 'External Mic').")
 
 def announce_feedback(text):
-    tts = gTTS(text=text, lang='it')
+    tts = gTTS(text=text, lang='en')
     temp_file = "final_feedback.mp3"
 
     try:
