@@ -6,25 +6,18 @@ namespace Loupedeck.ExamplePlugin
     using Loupedeck;
     using Newtonsoft.Json; // Necessario per leggere il JSON
 
-    // Classe per mappare i dati del file .json
-    public class ActionMeta3
-    {
-        public string Title { get; set; } = "";
-        public string IconPath { get; set; } = ""; 
-    }
-
     public class DynamicCommand3 : PluginDynamicCommand
     {
         // --- CONFIGURAZIONE PERCORSI ---
         // Percorso assoluto della cartella condivisa
-        private const string BasePath = "/Users/matti/Documents/hackaton/ExamplePlugin/src/Actions/scripts";
+        private const string BasePath = "/Users/matti/Documents/hackaton/lauzhack2025/ExamplePlugin/src/Actions/scripts";
         
         private string ScriptPath => Path.Combine(BasePath, "script_3.py");
         private string MetaPath => Path.Combine(BasePath, "script_3.json");
         private string DebugLogPath = "/tmp/MX_DEBUG.txt";
 
         // Variabili di stato
-        private ActionMeta3 _currentMeta = new ActionMeta3();
+        private ActionMeta _currentMeta = new ActionMeta();
         private FileSystemWatcher _watcher;
 
         public DynamicCommand3()
@@ -77,7 +70,7 @@ namespace Loupedeck.ExamplePlugin
                 if (File.Exists(MetaPath))
                 {
                     string jsonContent = File.ReadAllText(MetaPath);
-                    var meta = JsonConvert.DeserializeObject<ActionMeta3>(jsonContent);
+                    var meta = JsonConvert.DeserializeObject<ActionMeta>(jsonContent);
                     
                     if (meta != null)
                     {
@@ -125,21 +118,39 @@ namespace Loupedeck.ExamplePlugin
 
         protected override String GetCommandDisplayName(String actionParameter, PluginImageSize imageSize) => _currentMeta.Title;
 
-        // Esegue lo script Python quando premi il tasto
+        // Esegue lo script Python tramite Terminale macOS (visibile) quando premi il tasto
         protected override void RunCommand(String actionParameter)
         {
             try
             {
                 if (!File.Exists(ScriptPath)) return;
 
+                // 1. Definiamo l'interprete specifico (il tuo venv)
+                string venvPython = "/Users/matti/Documents/hackaton/lauzhack2025/ExamplePlugin/src/Actions/.venv/bin/python";
+
+                // 2. Costruiamo il comando completo che il Terminale dovrà eseguire
+                string commandToRun = $"{venvPython} \"{ScriptPath}\"";
+
                 var startInfo = new System.Diagnostics.ProcessStartInfo();
-                startInfo.FileName = "/usr/bin/python3"; // Assicurati che sia il path giusto di python3
-                startInfo.Arguments = $"\"{ScriptPath}\"";
+
+                // 3. Usiamo osascript (AppleScript) per pilotare il Terminale
+                startInfo.FileName = "/usr/bin/osascript";
+
+                // 4. Diciamo al Terminale di eseguire il nostro comando
+                //    Nota: Gli escape (\") sono fondamentali qui
+                startInfo.Arguments = $"-e \"tell application \\\"Terminal\\\" to do script \\\"{commandToRun}\\\"\"";
+
                 startInfo.UseShellExecute = false;
-                startInfo.CreateNoWindow = true;
+                startInfo.CreateNoWindow = true; // La finestra C# è nascosta, il Terminale apparirà
+
+                using (var process = System.Diagnostics.Process.Start(startInfo))
+                {
+                    process.WaitForExit(); // Attendiamo che il comando venga inviato al Terminale
+                    Log($"AppleScript executed: {ScriptPath}");
+                }
                 
-                System.Diagnostics.Process.Start(startInfo);
-                Log($"Executed: {ScriptPath}");
+                // Forziamo un aggiornamento immagine (Python ci metterà un po', ma intanto notifichiamo)
+                this.ActionImageChanged(actionParameter);
             }
             catch (Exception ex)
             {

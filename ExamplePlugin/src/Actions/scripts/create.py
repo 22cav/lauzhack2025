@@ -8,7 +8,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw
 from gtts import gTTS
-import re
 
 # --- CONFIGURATION ---
 load_dotenv()
@@ -38,7 +37,7 @@ def check_mics():
     print("Cerca il tuo microfono reale (es. 'MacBook Pro Microphone', 'AirPods', 'External Mic').")
 
 def announce_feedback(text):
-    tts = gTTS(text=text, lang='it')
+    tts = gTTS(text=text, lang='en')
     temp_file = "final_feedback.mp3"
 
     try:
@@ -65,8 +64,8 @@ def play_feedback(status):
         audio_file = os.path.join(AUDIO_BASE_PATH, "start.mp3")
     elif status == "no_understand":
         audio_file = os.path.join(AUDIO_BASE_PATH, "start.mp3")
-    elif status == "unavailable":
-        audio_file = os.path.join(AUDIO_BASE_PATH, "start.mp3")
+    elif status == "error":
+        audio_file = os.path.join(AUDIO_BASE_PATH, "error.mp3")
     else:
         return
 
@@ -94,10 +93,10 @@ def button_color(color):
     # DEFINIZIONE COLORI (RGB)
     # Hai chiesto che lo stato iniziale (reset) sia BIANCO.
     colors = {
-        "red": (255, 0, 0),
-        "yellow": (255, 255, 0),
-        "green": (0, 255, 0),
-        "reset": (255, 255, 255) # Bianco per il reset
+        "red": (255, 0, 50),      # More vibrant red
+        "yellow": (255, 230, 0),  # Brighter yellow
+        "green": (0, 255, 80),    # More vibrant green
+        "reset": (255, 255, 255)  # White for reset
     }
     
     # Ottieni il colore RGB desiderato, default bianco se non trovato
@@ -154,11 +153,11 @@ def listen_to_microphone():
                 
             except sr.WaitTimeoutError:
                 print("Timeout: No speech detected.")
-                play_feedback("no_talking")
+                play_feedback("error")
                 return None
     except OSError as e:
         print(f"Error accessing microphone: {e}")
-        play_feedback("no_microphone")
+        play_feedback("error")
         return None
 
     try:
@@ -170,11 +169,11 @@ def listen_to_microphone():
         return text
     except sr.UnknownValueError:
         print("Could not understand audio.")
-        play_feedback("no_understand")
+        play_feedback("error")
         return None
     except sr.RequestError as e:
         print(f"Speech recognition service error: {e}")
-        play_feedback("unavailable")
+        play_feedback("error")
         return None
 
 def from_transcription_to_data(transcription):
@@ -184,17 +183,17 @@ def from_transcription_to_data(transcription):
     - Python Code
     """
     system_prompt = (
-        "You are a Python Script Generator for Blender. "
-        "The user wants a script that performs an action IMMEDIATELY when executed. "
+        "You are a Python Script Generator for MacOS, specialized in automating macOS applications. "
+        "The user wants a script that performs an action IMMEDIATELY when executed, often by interacting with pre-defined macOS applications. "
+        "Leverage `osascript` via `subprocess` for controlling macOS apps when necessary. "
         "Do NOT create an Add-on. Do NOT create a Tool.\n\n"
         
         "STRICT RULES:\n"
         "1. NO CLASSES: Do not define 'class Operator(bpy.types.Operator)'.\n"
-        "2. NO REGISTRATION: Do not use 'bpy.utils.register_class' or 'register()'.\n"
-        "3. NO KEYMAPS: Do not try to assign hotkeys using 'wm.keyconfigs'.\n"
-        "4. IMMEDIATE EXECUTION: Write procedural code that runs top-to-bottom (e.g., 'bpy.ops.mesh.primitive_cube_add()', 'print(\"Hello\")').\n"
-        "5. FLEXIBILITY: Use 'bpy' only if interacting with Blender internals. Use standard Python libraries (os, sys, math, etc.) if the task is generic.\n"
-        "6. OUTPUT FORMAT: Return ONLY the JSON object described below.\n\n"
+        "2. NO KEYMAPS: Do not try to assign hotkeys using 'wm.keyconfigs'.\n"
+        "3. IMMEDIATE EXECUTION: Write procedural code that runs top-to-bottom (e.g., 'print(\"Hello\")').\n"
+        "4. USE OSASCRIPT: For controlling macOS applications, use `subprocess.run(['osascript', '-e', 'tell application 'Finder' to activate'])` or similar AppleScript commands.\n"
+        "5. OUTPUT FORMAT: Return ONLY the JSON object described below.\n"
         
         "JSON Structure:\n"
         "{\n"
@@ -278,7 +277,7 @@ def from_transcription_to_data(transcription):
 
     except Exception as e:
         print(f"LLM Interaction Error: {e}")
-        play_feedback("unavailable")
+        play_feedback("error")
         return None, None
 
 def get_next_sequence_id():
@@ -360,7 +359,7 @@ def save_action_files(cmd_name, code):
         print(f"📜 Script saved: {script_filename}")
     except Exception as e:
         print(f"Error saving script: {e}")
-        play_feedback("unavailable")
+        play_feedback("error")
         return False
 
     # 5. Save JSON Metadata
@@ -403,6 +402,11 @@ def main():
             button_color("reset")
             print("Error during saving action files.")
             return
+        else:
+            button_color("green")
+            time.sleep(1)
+            button_color("reset")
+            print("Action files saved successfully.")
     else:
         button_color("red")
         time.sleep(1)
