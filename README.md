@@ -4,98 +4,38 @@
 
 # Gesture Control System
 
-**A production-ready, AI-powered hand gesture recognition system for controlling creative applications**
+**Real-time hand gesture recognition for controlling Blender's 3D viewport**
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10+-green.svg)](https://google.github.io/mediapipe/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)](https://github.com)
-
-[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [Architecture](#-architecture) • [Contributing](#-contributing)
 
 </div>
 
 ---
 
-## 🎯 Overview
+## Overview
 
-The **Gesture Control System** is a sophisticated, event-driven platform that enables intuitive control of creative applications through hand gestures. Built with MediaPipe and OpenCV, it provides real-time gesture recognition with robust filtering, validation, and platform-specific optimizations.
+A production-ready gesture recognition system that enables intuitive control of Blender's 3D viewport through hand gestures. Built with MediaPipe for robust hand tracking and featuring platform-specific optimizations for macOS, Linux, and Windows.
 
-### Key Highlights
+### Core Features
 
-- 🎨 **15+ Production Gestures** - From basic hand poses to complex dynamic movements
-- 🔄 **Real-time Processing** - Low-latency gesture detection with smoothing filters
-- 🎛️ **Blender Integration** - Native addon for 3D viewport control and animation
-- 🖥️ **Cross-Platform** - Optimized for macOS, Linux, and Windows
-- 🧩 **Modular Architecture** - Event-driven design for easy extensibility
-- ⚡ **Production-Ready** - Comprehensive testing and validation pipeline
-
----
-
-## ✨ Features
-
-### Gesture Library
-
-#### **Basic Gestures** (6)
-| Gesture | Description | Use Case |
-|---------|-------------|----------|
-| 🖐️ Open Palm | Flat hand, all fingers extended | Play animation, confirm action |
-| ✊ Closed Fist | All fingers closed | Pause, stop action |
-| 👆 Pointing | Index finger extended | Select, navigate forward |
-| ✌️ Peace Sign | Index + middle fingers extended | Navigate backward, undo |
-| 👍 Thumbs Up | Thumb extended upward | Approve, toggle mode |
-| 🤘 Rock On | Index + pinky extended | Special action |
-
-#### **Advanced Gestures** (9)
-| Gesture | Description | Use Case |
-|---------|-------------|----------|
-| 🤏 Pinch | Thumb + index finger touching | Grab, select object |
-| 🖱️ Pinch & Drag | Pinch with hand movement | Rotate viewport, move objects |
-| ⬅️ Swipe Left | Horizontal hand movement left | Navigate, pan left |
-| ➡️ Swipe Right | Horizontal hand movement right | Navigate, pan right |
-| ⬆️ Swipe Up | Vertical hand movement up | Scroll up, zoom in |
-| ⬇️ Swipe Down | Vertical hand movement down | Scroll down, zoom out |
-| 🔄 Rotate CW | Circular hand motion | Rotate objects clockwise |
-| 👋 Wave | Repeated left-right motion | Reset, cancel |
-| 🅥 V-Gesture | Peace sign with tracking | Proportional navigation control |
-
-### Platform Support
-
-- ✅ **macOS** - Main-thread camera mode for proper permissions
-- ✅ **Linux** - Threaded camera processing
-- ✅ **Windows** - Threaded camera processing
-- 🔧 **Auto-detection** - Platform-specific optimizations applied automatically
-
-### Blender Integration
-
-Control Blender's 3D viewport and animation timeline with natural hand gestures:
-
-| Action | Gesture | Description |
-|--------|---------|-------------|
-| **Rotate Viewport** | Pinch & Drag | Orbit camera around scene |
-| **Pan Viewport** | V-Gesture Drag | Move camera position |
-| **Play Animation** | Open Palm | Start timeline playback |
-| **Stop Animation** | Closed Fist | Pause timeline |
-| **Next Frame** | Pointing | Step forward one frame |
-| **Previous Frame** | Peace Sign | Step backward one frame |
-| **Toggle Mode** | Thumbs Up | Switch edit/object mode |
+- 🎯 **4 Core Gestures** - Pinch, V-gesture, Open Palm, Closed Fist
+- 🔄 **Viewport Control** - Rotate and pan Blender's 3D viewport naturally
+- 🎬 **Animation Control** - Play/stop timeline with hand gestures
+- 🖥️ **Cross-Platform** - Optimized for macOS (main-thread), Linux/Windows (threaded)
+- ⚡ **Low Latency** - Real-time processing with smoothing filters
+- 🎛️ **Configurable** - YAML-based configuration for sensitivity and mappings
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
-- Python 3.8 or higher
-- Webcam or compatible camera device
-- (Optional) Blender 3.0+ for 3D integration
-
-### Installation
-
 ```bash
-# Clone the repository
-git clone https://github.com/22cav/lauzhack2025.git
-cd lauzhack2025
+# Python 3.8 or higher
+python --version
 
 # Install dependencies
 pip install -r requirements.txt
@@ -103,309 +43,302 @@ pip install -r requirements.txt
 
 ### Running the System
 
-#### Basic Mode (Gesture Recognition Only)
+**1. Start the gesture engine:**
 
 ```bash
-python main_orchestrator.py --config config/test_gesture_only.yaml
-```
-
-#### Blender Integration Mode
-
-```bash
-# Start the gesture control engine
 python main_orchestrator.py --config config/blender_mode.yaml --debug
-
-# In Blender:
-# 1. Install addon from blender_addon/gesture_control_addon.py
-# 2. Enable "Gesture Control Center" in preferences
-# 3. Open sidebar (N key) → Gesture tab
-# 4. Click "Connect Only" to link with running engine
 ```
 
-### Configuration
+**2. In Blender:**
+- Install the addon from `blender_addon/gesture_control_addon.py`
+- Enable "Gesture Control Center" in Preferences → Add-ons
+- Open the sidebar (N key) → Gesture tab
+- Click **"Connect Only"** to link with the running engine
 
-Edit `config/blender_mode.yaml` to customize:
-
-```yaml
-# Gesture sensitivity
-gesture_sensitivity: 0.7
-
-# Camera settings
-camera_index: 0
-camera_width: 1280
-camera_height: 720
-
-# Enabled gesture sets
-enabled_gestures:
-  - basic
-  - advanced
-  - navigation
-```
+**3. Control Blender with gestures!**
 
 ---
 
-## 📦 Project Structure
+## Gestures
+
+The system recognizes 4 core hand gestures for Blender control:
+
+| Gesture | Description | Action |
+|---------|-------------|--------|
+| 🤏 **Pinch** | Thumb + index finger touching | **Rotate viewport** - Move hand while pinching to orbit camera |
+| ✌️ **V-Gesture** | Index + middle fingers extended | **Pan viewport** - Move hand to pan camera position |
+| 🖐️ **Open Palm** | All fingers extended | **Play animation** - Start timeline playback |
+| ✊ **Closed Fist** | All fingers closed | **Stop animation** - Pause timeline |
+
+### Gesture Details
+
+**Pinch (Rotation Mode)**
+- Pinch thumb and index finger together
+- Move your hand to rotate the viewport
+- Automatic orbit around scene center
+- Release to exit rotation mode
+
+**V-Gesture (Navigation Mode)**
+- Extend index and middle fingers (peace sign)
+- Keep ring and pinky fingers closed
+- Move your hand to pan the viewport
+- Release to exit navigation mode
+
+**Animation Control**
+- Open palm to start playback
+- Closed fist to stop
+- Works independently of viewport modes
+
+---
+
+## Architecture
+
+```
+┌─────────────┐
+│   Camera    │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────┐
+│ MediaPipe       │
+│ Hand Tracking   │
+└──────┬──────────┘
+       │
+       ▼
+┌─────────────────┐
+│ Gesture         │
+│ Detector        │
+└──────┬──────────┘
+       │
+       ▼
+┌─────────────────┐
+│ Filters &       │
+│ Validators      │
+└──────┬──────────┘
+       │
+       ▼
+┌─────────────────┐
+│ Event Bus       │
+└──────┬──────────┘
+       │
+       ▼
+┌─────────────────┐
+│ Gesture         │
+│ Handlers        │
+└──────┬──────────┘
+       │
+       ▼
+┌─────────────────┐
+│ Blender Output  │
+│ (Socket)        │
+└──────┬──────────┘
+       │
+       ▼
+┌─────────────────┐
+│ Blender Addon   │
+│ (Viewport)      │
+└─────────────────┘
+```
+
+### Key Components
+
+**Gesture Detection** (`gestures/`)
+- MediaPipe-based hand landmark tracking
+- Confidence validation and quality checks
+- Smoothing filters for stable detection
+
+**Event System** (`core/`)
+- Central EventBus for message routing
+- Type-safe event handling
+- Modular handler registration
+
+**Handlers** (`handlers/`)
+- `blender_viewport_handler.py` - Viewport rotation and panning
+- `blender_animation_handler.py` - Timeline control
+- Configurable sensitivity and behavior
+
+**Blender Integration** (`blender_addon/`)
+- Socket-based communication (port 8888)
+- Real-time viewport manipulation
+- Simplified rotation and pan functions
+
+---
+
+## Configuration
+
+Edit `config/blender_mode.yaml` to customize behavior:
+
+```yaml
+# Gesture detection settings
+inputs:
+  gesture:
+    enabled: true
+    camera_index: 0
+    show_preview: true
+    min_confidence: 0.6
+    filter_window: 3
+
+# Blender output
+outputs:
+  blender:
+    enabled: true
+    host: localhost
+    port: 8888
+```
+
+### Sensitivity Tuning
+
+In the Blender addon panel, adjust:
+- **Rotation Sensitivity** - Controls viewport rotation speed (default: 0.5)
+- **Pan Sensitivity** - Controls viewport panning speed (default: 0.1)
+
+---
+
+## Project Structure
 
 ```
 lauzhack2025/
-├── 📁 config/                      # Configuration files
-│   ├── blender_mode.yaml          # Blender integration config
-│   ├── event_mappings.yaml        # Event routing configuration
-│   └── test_gesture_only.yaml     # Standalone gesture testing
-│
-├── 📁 core/                        # Core event system
-│   ├── event_system.py            # EventBus and event routing
-│   ├── gesture_handler.py         # Gesture processing pipeline
-│   ├── launcher.py                # Application launcher
-│   └── modality_manager.py        # Mode switching logic
-│
-├── 📁 gestures/                    # Gesture recognition engine
-│   ├── detector.py                # Main detection engine
-│   ├── filters.py                 # Smoothing and stabilization
-│   ├── validators.py              # Quality and confidence checks
-│   ├── registry.py                # Gesture registration system
-│   └── library/                   # Gesture definitions
-│       ├── basic.py               # 6 basic hand poses
-│       ├── advanced.py            # 9 advanced gestures
-│       └── navigation.py          # Navigation-specific gestures
-│
-├── 📁 handlers/                    # Specialized gesture handlers
-│   ├── blender_animation_handler.py  # Timeline control
-│   ├── blender_viewport_handler.py   # 3D viewport control
-│   └── modality_handler.py           # Mode switching
-│
-├── 📁 inputs/                      # Input modules
-│   ├── gesture_input_production.py  # Production gesture input
-│   └── mx_console_input.py          # Console/keyboard input
-│
-├── 📁 outputs/                     # Output modules
-│   ├── blender_output.py          # Blender socket communication
-│   ├── system_output.py           # System-level commands
-│   └── loupedeck_output.py        # Loupedeck device (legacy)
-│
-├── 📁 blender_addon/               # Blender addon
-│   └── gesture_control_addon.py  # Blender plugin implementation
-│
-├── 📁 tests/                       # Test suite
-│   ├── test_core.py               # Core system tests
-│   ├── test_gestures.py           # Gesture detection tests
-│   ├── test_handler_system.py     # Handler pipeline tests
-│   └── test_integration.py        # End-to-end tests
-│
-├── main_orchestrator.py            # Main entry point
-├── requirements.txt                # Python dependencies
-└── README.md                       # This file
+├── config/                      # YAML configuration files
+├── core/                        # Event system and orchestration
+│   ├── event_system.py         # EventBus implementation
+│   ├── gesture_handler.py      # Handler base classes
+│   └── launcher.py             # Application launcher
+├── gestures/                    # Gesture recognition
+│   ├── detector.py             # Main detection engine
+│   ├── filters.py              # Smoothing filters
+│   ├── validators.py           # Quality validation
+│   └── library/
+│       └── navigation.py       # Core gesture definitions
+├── handlers/                    # Gesture handlers
+│   ├── blender_viewport_handler.py
+│   └── blender_animation_handler.py
+├── inputs/                      # Input modules
+│   └── gesture_input_production.py
+├── outputs/                     # Output modules
+│   └── blender_output.py       # Blender socket communication
+├── blender_addon/               # Blender addon
+│   └── gesture_control_addon.py
+├── main_orchestrator.py         # Main entry point
+└── requirements.txt             # Python dependencies
 ```
 
 ---
 
-## 🏗️ Architecture
+## Platform Support
 
-The system follows an **event-driven architecture** with clear separation of concerns:
+### macOS
+- **Main-thread camera mode** - Required for camera permissions
+- Camera window displays in foreground
+- Launched via Terminal.app for proper access
 
-```mermaid
-graph LR
-    A[Camera Input] --> B[Gesture Detector]
-    B --> C[Filters & Validators]
-    C --> D[Event Bus]
-    D --> E[Gesture Handlers]
-    E --> F[Output Modules]
-    F --> G[Blender/System]
-    
-    H[Config] -.-> B
-    H -.-> E
-    H -.-> F
-```
+### Linux / Windows
+- **Threaded camera mode** - Background processing
+- Standard OpenCV camera access
+- Preview window optional
 
-### Core Components
-
-#### 1. **Event System** (`core/event_system.py`)
-- Central message bus for all system events
-- Type-safe event routing
-- Publisher-subscriber pattern
-
-#### 2. **Gesture Detection** (`gestures/`)
-- MediaPipe-based hand tracking
-- Multi-stage filtering pipeline
-- Confidence-based validation
-- Gesture state management
-
-#### 3. **Handler System** (`handlers/`)
-- Modular gesture processing
-- Priority-based execution
-- Enable/disable individual handlers
-- Specialized handlers for different applications
-
-#### 4. **Output Modules** (`outputs/`)
-- Application-specific integrations
-- Socket-based communication
-- System command execution
-
-### Data Flow
-
-```
-Camera Frame → Hand Detection → Gesture Recognition → Filtering → 
-Validation → Event Creation → Handler Processing → Output Execution
-```
+The system automatically detects your platform and uses the appropriate mode.
 
 ---
 
-## 🧪 Testing
+## Troubleshooting
 
-The project includes comprehensive test coverage:
+**Camera doesn't open?**
+- Check camera permissions in System Preferences (macOS)
+- Try a different camera: `--camera-index 1`
+- Ensure no other app is using the camera
+
+**Gestures not detected?**
+- Improve lighting conditions
+- Position hand clearly in frame
+- Adjust `min_confidence` in config (lower = more sensitive)
+- Check debug output with `--debug` flag
+
+**Blender not responding?**
+- Verify addon is installed and enabled
+- Check port 8888 is available: `lsof -i :8888`
+- Ensure "Connect Only" button was clicked in Blender
+- Check Blender's system console for errors
+
+**Viewport movement too fast/slow?**
+- Adjust sensitivity in Blender addon panel
+- Modify `sensitivity` in handler config
+- Fine-tune in real-time without restarting
+
+---
+
+## Development
+
+### Testing
 
 ```bash
 # Run all tests
 python -m pytest tests/ -v
 
 # Test specific components
-python -m pytest tests/test_gestures.py          # Gesture detection
-python -m pytest tests/test_core.py              # Event system
-python -m pytest tests/test_handler_system.py    # Handler pipeline
-python -m pytest tests/test_integration.py       # End-to-end
-
-# Run with coverage report
-python -m pytest tests/ --cov=. --cov-report=html
+python -m pytest tests/test_gestures.py
+python -m pytest tests/test_handler_system.py
 ```
 
----
+### Adding Custom Gestures
 
-## 🔧 Advanced Configuration
-
-### Custom Gesture Mappings
-
-Create custom event mappings in `config/event_mappings.yaml`:
-
-```yaml
-gesture_mappings:
-  OPEN_PALM:
-    - command: play_animation
-      modality: Control
-  
-  PINCH_DRAG:
-    - command: rotate_viewport
-      modality: Navigation
-      sensitivity: 0.5
-```
-
-### Adding New Gestures
-
-1. Define gesture in `gestures/library/`:
+1. Define gesture in `gestures/library/navigation.py`:
 ```python
-from gestures.base import GestureDefinition
-
-class MyCustomGesture(GestureDefinition):
-    name = "MY_GESTURE"
-    description = "Custom gesture description"
+@register("navigation")
+class MyGesture(Gesture):
+    @property
+    def name(self) -> str:
+        return "MY_GESTURE"
     
-    def detect(self, hand_landmarks):
+    def detect(self, landmarks, context):
         # Detection logic
-        return confidence_score
+        return GestureResult(name=self.name, confidence=0.9)
 ```
 
-2. Register in `gestures/registry.py`
-3. Add handler in `handlers/`
-4. Configure mapping in YAML
+2. Add handler in `handlers/`
+3. Configure mapping in YAML
 
 ---
 
-## 🐛 Troubleshooting
+## Technical Details
 
-### Camera Issues
+**Gesture Detection Pipeline:**
+1. MediaPipe extracts hand landmarks (21 points per hand)
+2. Landmarks filtered through smoothing window (reduces jitter)
+3. Quality validator checks landmark visibility and confidence
+4. Gesture detector matches against registered patterns
+5. Confidence validator ensures stable detection
+6. Event published to EventBus
+7. Handlers process and route to outputs
 
-**Camera doesn't open?**
-- Check camera permissions in System Preferences (macOS)
-- Try different camera index: `--camera-index 1`
-- Ensure no other application is using the camera
-
-**Poor detection quality?**
-- Improve lighting conditions
-- Ensure hand is clearly visible
-- Adjust camera position and angle
-- Increase `gesture_sensitivity` in config
-
-### Blender Connection
-
-**Blender not responding?**
-- Verify addon is installed and enabled
-- Check port 8888 is not in use: `lsof -i :8888`
-- Ensure firewall allows localhost connections
-- Check Blender console for error messages
-
-**Gestures work but viewport doesn't move?**
-- Verify correct modality is active (Control vs Navigation)
-- Adjust sensitivity settings in Blender addon panel
-- Check that 3D viewport is in focus
-
-### Performance
-
-**High CPU usage?**
-- Reduce camera resolution in config
-- Decrease detection frequency
-- Disable unused gesture sets
-- Close camera preview window
+**Movement Tracking:**
+- Pinch: Tracks midpoint of thumb/index, calculates deltas
+- V-Gesture: Tracks midpoint of index/middle, applies smoothing
+- Sensitivity multipliers: Rotation (20x), Navigation (150x)
+- Deadzone filtering to ignore micro-movements
 
 ---
 
-## 📚 Documentation
+## Requirements
 
-- [Architecture Overview](docs/architecture.md)
-- [Gesture Library Reference](gestures/library/README.md)
-- [Blender Integration Guide](blender_addon/README.md)
-- [API Documentation](docs/api.md)
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! Here's how to get started:
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Make your changes and add tests
-4. Ensure all tests pass: `pytest tests/`
-5. Commit your changes: `git commit -m 'Add amazing feature'`
-6. Push to the branch: `git push origin feature/amazing-feature`
-7. Open a Pull Request
-
-### Development Guidelines
-
-- Follow PEP 8 style guide
-- Add docstrings to all public functions
-- Include unit tests for new features
-- Update documentation as needed
+```
+mediapipe>=0.10.0
+opencv-python>=4.8.0
+PyYAML>=6.0
+numpy>=1.24.0
+```
 
 ---
 
-## 📄 License
+## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- **MediaPipe** - Google's hand tracking solution
-- **OpenCV** - Computer vision library
-- **Blender Foundation** - 3D creation suite
-- **LauzHack 2025** - Hackathon inspiration
-
----
-
-## 📧 Contact
-
-For questions, issues, or suggestions:
-
-- 🐛 [Report a Bug](https://github.com/22cav/lauzhack2025/issues)
-- 💡 [Request a Feature](https://github.com/22cav/lauzhack2025/issues)
-- 📧 Email: [your-email@example.com]
+MIT License - See LICENSE file for details.
 
 ---
 
 <div align="center">
 
-**Made with ❤️ for LauzHack 2025**
+**Built for LauzHack 2025**
 
-⭐ Star this repo if you find it useful!
+Made with ❤️ by the gesture control team
 
 </div>
