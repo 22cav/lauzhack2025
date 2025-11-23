@@ -3,9 +3,12 @@ import speech_recognition as sr
 import requests
 import json
 import random
+import time
 from pathlib import Path
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw
+import playsound
+from gtts import gTTS
 
 # --- CONFIGURATION ---
 load_dotenv()
@@ -18,10 +21,79 @@ MODEL_NAME = os.environ.get("MODEL_NAME")
 
 BASE_PATH = "/Users/matti/Documents/hackaton/ExamplePlugin/src/Actions/scripts"
 TRACKING_FILE = os.path.join(BASE_PATH, "last_created.txt")
+AUDIO_BASE_PATH = "percorso/alla/tua/cartella/audio"
 
 # Ensure directory exists
 if not os.path.exists(BASE_PATH):
     os.makedirs(BASE_PATH)
+
+def announce_feedback(text):
+    tts = gTTS(text=text, lang='it')
+    temp_file = "temp_feedback.mp3"
+
+    try:
+        tts.save(temp_file)
+        playsound.playsound(temp_file)
+    except Exception as e:
+        print(f"Errore TTS/Riproduzione: {e}")
+    finally:
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+
+def play_feedback(status):
+    """It starts an audio file, based on status."""
+
+    if status == "success":
+        audio_file = os.path.join(AUDIO_BASE_PATH, "audio_registrato.wav")
+    elif status == "no_microphone":
+        audio_file = os.path.join(AUDIO_BASE_PATH, "errore_generico.wav")
+    elif status == "start":
+        audio_file = os.path.join(AUDIO_BASE_PATH, "errore_generico.wav")
+    elif status == "stop_listening":
+        audio_file = os.path.join(AUDIO_BASE_PATH, "errore_generico.wav")
+    elif status == "no_talking":
+        audio_file = os.path.join(AUDIO_BASE_PATH, "errore_generico.wav")
+    elif status == "no_understand":
+        audio_file = os.path.join(AUDIO_BASE_PATH, "errore_generico.wav")
+    elif status == "unavailable":
+        audio_file = os.path.join(AUDIO_BASE_PATH, "errore_generico.wav")
+    else:
+        return
+
+    try:
+        # playsound blocks execution until the audio finishes
+        playsound.playsound(audio_file)
+    except Exception as e:
+        print(f"Errore riproduzione audio: {e}")
+
+def button_color(color):
+    """
+    Updates the status icon file to communicate state.
+    Colors: red, yellow, green
+    """
+    status_icon_path = os.path.join(BASE_PATH, "status_icon.png") # it has to be the same icon as the default one
+    
+    colors = {
+        "red": (255, 0, 0),
+        "yellow": (255, 255, 0),
+        "green": (0, 255, 0),
+        "reset": (0, 0, 0)
+    }
+    
+    rgb = colors.get(color, (0, 0, 0))
+    
+    try:
+        img = Image.new('RGB', (80, 80), color=rgb)
+        img.save(status_icon_path)
+    except Exception as e:
+        print(f"Error updating status icon: {e}")
+        
+    if color in ["red", "green"]:
+        time.sleep(2)
+        button_color("reset")
+
+
+
 
 def listen_to_microphone():
     """
@@ -35,28 +107,37 @@ def listen_to_microphone():
     try:
         with sr.Microphone() as source:
             print("Calibrating for ambient noise... please wait.")
+            button_color("yellow")
             r.adjust_for_ambient_noise(source, duration=1)
+            play_feedback("start")
+            button_color("green")
             print(f"Listening... (Will stop after {r.pause_threshold}s of silence)")
+            play_feedback("stop_listening")
             
             try:
                 audio = r.listen(source, timeout=10)
             except sr.WaitTimeoutError:
                 print("Timeout: No speech detected.")
+                play_feedback("no_talking")
                 return None
     except OSError as e:
         print(f"Error accessing microphone: {e}")
+        play_feedback("no_microphone")
         return None
 
     try:
+        button_color("yellow")
         print("Recognizing...")
         text = r.recognize_google(audio, language="en-US") 
         print(f"You said: {text}")
         return text
     except sr.UnknownValueError:
         print("Could not understand audio.")
+        play_feedback("no_understand")
         return None
     except sr.RequestError as e:
         print(f"Speech recognition service error: {e}")
+        play_feedback("unavailable")
         return None
 
 def from_transcription_to_data(transcription):
@@ -113,11 +194,50 @@ def from_transcription_to_data(transcription):
         data = json.loads(clean_content)
         cmd_name = data.get("command_name", "unnamed_action")
         code = data.get("python_code", "")
+        if cmd_name and code:
+            audio_prompt = (
+                "You are a concise assistant tasked with creating audio feedback for a user. "
+                "You will receive a block of **Blender Python code** that was just generated and saved. "
+                "Your goal is to summarize the action performed by the code into a short, positive, and confirming sentence. "
+                "The output must be strictly a JSON object.\n\n"
+                
+                "STRICT RULES:\n"
+                "1. MAX LENGTH: The feedback sentence must be **maximum 15 words** long.\n"
+                "2. TONE: The sentence must be confirming and professional (e.g., 'The script will create a cube and scale it along the Z-axis.').\n"
+                "3. CONTEXT: Base the feedback **EXCLUSIVELY** on the received Python code.\n"
+                "4. OUTPUT FORMAT: Return ONLY the JSON object described below.\n\n"
+                
+                "JSON Structure:\n"
+                "{\n"
+                '  "feedback": "Your short confirming sentence describing the code.",\n'
+                "}"
+            )
+            audio_payload = {
+                "model": MODEL_NAME,
+                "messages": [
+                    {"role": "system", "content": audio_prompt},
+                    {"role": "user", "content": code}
+                ],
+                "temperature": 0.2
+            }
+            response = requests.post(API_ENDPOINT, headers=headers, json=audio_payload)
+            response.raise_for_status()
+            
+            result_json = response.json()
+            content = result_json['choices'][0]['message']['content']
+
+            # Clean up markdown
+            clean_content = content.replace("```json", "").replace("```", "").strip()
+            
+            data = json.loads(clean_content)
+            feedback = data.get("feedback", "Button created") 
+            announce_feedback(feedback)
 
         return cmd_name, code
 
     except Exception as e:
         print(f"LLM Interaction Error: {e}")
+        play_feedback("unavailable")
         return None, None
 
 def get_next_sequence_id():
@@ -199,7 +319,8 @@ def save_action_files(cmd_name, code):
         print(f"📜 Script saved: {script_filename}")
     except Exception as e:
         print(f"Error saving script: {e}")
-        return
+        play_feedback("unavailable")
+        return False
 
     # 5. Save JSON Metadata
     # The C# plugin likely watches this file to trigger the update
@@ -214,20 +335,29 @@ def save_action_files(cmd_name, code):
         print(f"✅ Metadata saved: {json_filename}")
     except Exception as e:
         print(f"Error saving metadata: {e}")
+        return False
+    
+    button_color("green")
+    return True
 
 def main():
     print("--- Voice to C# Plugin Action Generator ---")
     
     text = listen_to_microphone()
     if not text:
+        button_color("red")
         return
 
     print("\nGenerating immediate execution script...")
     cmd_name, code = from_transcription_to_data(text)
     
     if cmd_name and code:
-        save_action_files(cmd_name, code)
+        if not save_action_files(cmd_name, code):
+            button_color("red")
+            print("Error during saving action files.")
+            return
     else:
+        button_color("red")
         print("Failed to generate valid code or name from LLM.")
 
 if __name__ == "__main__":
