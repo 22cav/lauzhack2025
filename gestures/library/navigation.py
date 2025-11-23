@@ -14,7 +14,29 @@ mp_holistic = mp.solutions.holistic
 
 
 def get_extended_fingers(landmarks) -> list:
-    """Return list of booleans for extended fingers [Index, Middle, Ring, Pinky]."""
+    """
+    Determine which fingers are extended based on hand landmarks.
+    
+    Checks if each finger (Index, Middle, Ring, Pinky) is extended by
+    comparing the distance from wrist to fingertip vs wrist to PIP joint.
+    A finger is considered extended if the tip is significantly further
+    from the wrist than the PIP joint (1.2x multiplier).
+    
+    This method is more reliable than simple Y-coordinate comparison as it
+    accounts for hand rotation and orientation.
+    
+    Args:
+        landmarks: MediaPipe hand landmarks
+    
+    Returns:
+        List of 4 booleans [Index, Middle, Ring, Pinky] indicating
+        which fingers are extended (True) or closed (False)
+    
+    Example:
+        [True, True, False, False] = V-gesture (index + middle extended)
+        [True, True, True, True] = Open palm (all extended)
+        [False, False, False, False] = Closed fist (all closed)
+    """
     fingers = [
         mp_holistic.HandLandmark.INDEX_FINGER_TIP,
         mp_holistic.HandLandmark.MIDDLE_FINGER_TIP,
@@ -31,19 +53,40 @@ def get_extended_fingers(landmarks) -> list:
     
     extended = []
     for tip, pip in zip(fingers, fingers_pip):
-        # Simple y-check is often enough, but for strictness we can check distance from wrist
+        # Calculate distance from wrist to tip and wrist to PIP
         wrist = landmarks.landmark[mp_holistic.HandLandmark.WRIST]
         tip_dist = np.sqrt((landmarks.landmark[tip].x - wrist.x)**2 + (landmarks.landmark[tip].y - wrist.y)**2)
         pip_dist = np.sqrt((landmarks.landmark[pip].x - wrist.x)**2 + (landmarks.landmark[pip].y - wrist.y)**2)
         
-        extended.append(tip_dist > pip_dist * 1.2) # Tip must be significantly further
+        # Tip must be significantly further (1.2x) to be considered extended
+        extended.append(tip_dist > pip_dist * 1.2)
     
     return extended
 
 
 @register("navigation")
 class VGesture(Gesture):
-    """V-gesture with index and middle fingers for navigation movement."""
+    """
+    V-gesture with index and middle fingers for navigation movement.
+    
+    This gesture is used for viewport panning/navigation in 3D space.
+    The user extends their index and middle fingers in a V-shape while
+    keeping the ring and pinky fingers closed.
+    
+    Detection Criteria:
+    - Index finger extended (tip further from wrist than PIP joint)
+    - Middle finger extended (tip further from wrist than PIP joint)
+    - Ring finger closed (tip close to wrist, < 0.18 distance)
+    - Pinky finger closed (tip close to wrist, < 0.18 distance)
+    
+    Position Tracking:
+    - Tracks the midpoint between index and middle fingertips
+    - Used for calculating movement deltas in navigation
+    
+    Sensitivity Improvements:
+    - Lowered closed finger threshold from 0.2 to 0.18 for better detection
+    - More forgiving detection for small hand movements
+    """
     
     @property
     def name(self) -> str:
@@ -51,25 +94,44 @@ class VGesture(Gesture):
     
     @property
     def priority(self) -> int:
+        # Priority 10 - standard priority for navigation gestures
         return 10
     
     def detect(self, landmarks, context: Dict[str, Any]) -> Optional[GestureResult]:
+        """
+        Detect V-gesture from hand landmarks.
+        
+        Args:
+            landmarks: MediaPipe hand landmarks
+            context: Additional context (not used currently)
+        
+        Returns:
+            GestureResult with V-center position if detected, None otherwise
+        """
+        # Check finger extension state
         extended = get_extended_fingers(landmarks)
-        # Index and Middle extended, Ring and Pinky closed
+        
+        # Require: Index and Middle extended, Ring and Pinky closed
         if extended != [True, True, False, False]:
             return None
         
-        # Check Ring and Pinky are closed
+        # Verify ring and pinky are actually closed (not just less extended)
         wrist = landmarks.landmark[mp_holistic.HandLandmark.WRIST]
         ring_tip = landmarks.landmark[mp_holistic.HandLandmark.RING_FINGER_TIP]
         pinky_tip = landmarks.landmark[mp_holistic.HandLandmark.PINKY_TIP]
         
-        if np.sqrt((ring_tip.x - wrist.x)**2 + (ring_tip.y - wrist.y)**2) > 0.2:
+        # Lowered threshold from 0.2 to 0.18 for better small movement detection
+        # This makes the gesture more forgiving and easier to maintain
+        ring_dist = np.sqrt((ring_tip.x - wrist.x)**2 + (ring_tip.y - wrist.y)**2)
+        pinky_dist = np.sqrt((pinky_tip.x - wrist.x)**2 + (pinky_tip.y - wrist.y)**2)
+        
+        if ring_dist > 0.18:  # More forgiving threshold
             return None
-        if np.sqrt((pinky_tip.x - wrist.x)**2 + (pinky_tip.y - wrist.y)**2) > 0.2:
+        if pinky_dist > 0.18:  # More forgiving threshold
             return None
         
         # Calculate V center position (midpoint between index and middle tips)
+        # This position is used to track hand movement for navigation
         index_tip = landmarks.landmark[mp_holistic.HandLandmark.INDEX_FINGER_TIP]
         middle_tip = landmarks.landmark[mp_holistic.HandLandmark.MIDDLE_FINGER_TIP]
         
@@ -78,11 +140,13 @@ class VGesture(Gesture):
             'y': (index_tip.y + middle_tip.y) / 2
         }
         
+        # Return with high confidence (0.9) and position data
         return GestureResult(
             name=self.name,
             confidence=0.9,
             data={'position': v_center}
         )
+
 
 
 @register("navigation")

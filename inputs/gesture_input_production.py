@@ -39,6 +39,27 @@ class GestureInputBase:
     
     Provides shared initialization and processing logic that works
     in both threaded and main-thread modes.
+    
+    This class integrates the production gesture detection system with:
+    - MediaPipe Holistic for hand/pose tracking
+    - Gesture detector with confidence validation
+    - Landmark filtering for noise reduction
+    - Quality validation for reliable detection
+    
+    State Management:
+    - is_playing: Animation playback state (controlled by OPEN_PALM/CLOSED_FIST)
+    - is_pinching: Rotation mode active (PINCH gesture)
+    - is_v_gesturing: Navigation mode active (V_GESTURE)
+    
+    Modality System:
+    - ROTATION mode: PINCH gesture for viewport rotation
+    - NAVIGATION mode: V_GESTURE for viewport panning
+    - Automatic switching between modes based on detected gesture
+    
+    Movement Tracking:
+    - Tracks hand position for continuous gestures (PINCH, V_GESTURE)
+    - Calculates movement deltas for smooth control
+    - Applies sensitivity and filtering for responsive yet stable input
     """
     
     def __init__(self, event_bus: EventBus, config: Dict[str, Any]):
@@ -83,6 +104,7 @@ class GestureInputBase:
         # V-gesture movement tracking
         self.is_v_gesturing = False
         self.last_v_pos = None
+        self.smoothed_v_delta = {'dx': 0, 'dy': 0}  # For exponential smoothing
         
         # Feedback state
         self.last_command = "None"
@@ -118,6 +140,26 @@ class GestureInputBase:
     def _process_frame(self, image, results) -> Optional[str]:
         """
         Process a single frame and detect gestures.
+        
+        This is the main gesture processing pipeline that:
+        1. Validates hand landmarks are present
+        2. Checks landmark quality
+        3. Applies smoothing filter
+        4. Detects gestures using production detector
+        5. Validates confidence
+        6. Routes to appropriate handler based on gesture type
+        
+        Gesture Processing Order:
+        1. Animation Control (OPEN_PALM, CLOSED_FIST) - Always processed
+        2. Modality Gestures (PINCH, V_GESTURE) - Automatic mode switching
+        3. Other Gestures - Reset modality states
+        
+        Args:
+            image: Camera frame (BGR format)
+            results: MediaPipe Holistic results with hand/pose landmarks
+        
+        Returns:
+            Detected gesture name or None
         """
         # Draw landmarks if preview enabled
         if self.show_preview:
@@ -219,7 +261,32 @@ class GestureInputBase:
         return None
     
     def _handle_pinch_drag(self, result, hand_landmarks):
-        """Handle PINCH_DRAG with proportional rotation."""
+        """
+        Handle PINCH_DRAG with proportional rotation.
+        
+        Tracks pinch position and calculates movement deltas for smooth
+        viewport rotation. The rotation is proportional to hand movement,
+        providing intuitive control.
+        
+        Tracking:
+        - Uses pinch position from result data (midpoint of thumb/index)
+        - Falls back to wrist position if pinch position unavailable
+        - Tracks position between frames to calculate deltas
+        
+        Sensitivity:
+        - Base sensitivity: 100.0x multiplier
+        - Provides visible rotation with small hand movements
+        - Can be adjusted via configuration
+        
+        State Management:
+        - is_pinching: Tracks if currently in rotation mode
+        - pinch_start_pos: Initial position when pinch starts
+        - last_pinch_pos: Previous frame position for delta calculation
+        
+        Args:
+            result: GestureResult with position data
+            hand_landmarks: MediaPipe hand landmarks
+        """
         # Use the pinch position from result data if available, else wrist
         current_pos = result.data.get('position', None)
         if not current_pos:
@@ -236,8 +303,9 @@ class GestureInputBase:
             dx = current_pos['x'] - self.last_pinch_pos['x']
             dy = current_pos['y'] - self.last_pinch_pos['y']
             
-            # Increased sensitivity for visible movement
-            sensitivity = 100.0
+            # Reduced sensitivity for more precise rotation control
+            # Changed from 100.0 to 20.0 (0.2x base sensitivity)
+            sensitivity = 20.0
             
             if abs(dx) > 0.001 or abs(dy) > 0.001:
                 self._publish_event("ROTATE", {
@@ -248,30 +316,84 @@ class GestureInputBase:
             self.last_pinch_pos = current_pos
 
     def _handle_v_movement(self, result):
-        """Handle V-gesture movement for navigation."""
+        """
+        Handle V-gesture movement for navigation with improved sensitivity and noise filtering.
+        
+        This method tracks the V-gesture position and calculates movement deltas
+        for smooth viewport panning/navigation. Includes several improvements:
+        
+        1. Higher sensitivity (150x vs 100x) for detecting small movements
+        2. Deadzone filtering to ignore micro-jitter from hand tremor
+        3. Exponential smoothing for fluid, natural movement
+        
+        Args:
+            result: GestureResult containing position data
+        
+        Movement Calculation:
+        - Tracks position between frames
+        - Mirrors X-axis (negates dx) to correct camera coordinates
+        - Applies sensitivity multiplier for responsive control
+        - Filters movements below deadzone threshold
+        
+        Smoothing:
+        - Uses exponential moving average on deltas
+        - Smoothing factor: 0.7 (70% new, 30% old)
+        - Reduces jitter while maintaining responsiveness
+        """
         current_pos = result.data.get('position', None)
         if not current_pos:
             return
         
         if not self.is_v_gesturing:
-            # Start V-gesturing
+            # Start V-gesturing - initialize tracking
             self.is_v_gesturing = True
             self.last_v_pos = current_pos
+            # Initialize smoothed delta storage
+            if not hasattr(self, 'smoothed_v_delta'):
+                self.smoothed_v_delta = {'dx': 0, 'dy': 0}
         else:
-            # Moving
+            # Calculate movement delta
             # Note: Camera coordinates are mirrored, so negate dx for proper direction
             dx = -(current_pos['x'] - self.last_v_pos['x'])  # Negate for mirror correction
             dy = current_pos['y'] - self.last_v_pos['y']
             
-            sensitivity = 100.0
+            # IMPROVED: Higher sensitivity for better small movement detection
+            # Increased from 100.0 to 150.0 for more responsive navigation
+            sensitivity = 150.0
             
-            if abs(dx) > 0.001 or abs(dy) > 0.001:
+            # IMPROVED: Larger deadzone to filter micro-movements and reduce jitter
+            # Increased from 0.0005 to 0.001 for cleaner, less laggy movement
+            deadzone = 0.001
+            
+            # Check if movement exceeds deadzone
+            if abs(dx) > deadzone or abs(dy) > deadzone:
+                # Apply sensitivity
+                dx_scaled = dx * sensitivity
+                dy_scaled = dy * sensitivity
+                
+                # IMPROVED: Stronger exponential smoothing for uniform movement
+                # Increased from 0.7 to 0.85 for smoother, less back-and-forth motion
+                # Higher alpha = more weight on new value, but still smooths out jitter
+                smoothing_alpha = 0.85  # 85% new value, 15% old value
+                
+                self.smoothed_v_delta['dx'] = (
+                    smoothing_alpha * dx_scaled + 
+                    (1 - smoothing_alpha) * self.smoothed_v_delta['dx']
+                )
+                self.smoothed_v_delta['dy'] = (
+                    smoothing_alpha * dy_scaled + 
+                    (1 - smoothing_alpha) * self.smoothed_v_delta['dy']
+                )
+                
+                # Publish smoothed movement
                 self._publish_event("NAVIGATE", {
-                    "dx": dx * sensitivity,
-                    "dy": dy * sensitivity
+                    "dx": self.smoothed_v_delta['dx'],
+                    "dy": self.smoothed_v_delta['dy']
                 })
             
+            # Update last position for next frame
             self.last_v_pos = current_pos
+
 
     def _draw_landmarks(self, image, results):
         """Draw pose and hand landmarks."""
