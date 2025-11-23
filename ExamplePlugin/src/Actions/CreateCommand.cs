@@ -28,14 +28,15 @@ namespace Loupedeck.ExamplePlugin
 
                 _watcher = new FileSystemWatcher(IconFolder, IconFile);
                 
-                // Monitoriamo tutto: scrittura, creazione, dimensione
-                _watcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.CreationTime | NotifyFilters.Size;
+                // Monitor everything that might change the file
+                _watcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.CreationTime | NotifyFilters.Size | NotifyFilters.FileName;
 
-                // Quando il file cambia, ricarica l'immagine
-                _watcher.Changed += (s, e) => { this.ActionImageChanged(null); }; // null aggiorna tutte le istanze
-                _watcher.Created += (s, e) => { this.ActionImageChanged(null); };
-                // Importante: a volte i file vengono sovrascritti non modificati
-                _watcher.Renamed += (s, e) => { this.ActionImageChanged(null); };
+                // Use a debounce mechanism to avoid spamming updates
+                // (FileSystemWatcher can fire multiple events for a single file write)
+                _watcher.Changed += OnFileChanged;
+                _watcher.Created += OnFileChanged;
+                _watcher.Renamed += OnFileChanged;
+                _watcher.Deleted += OnFileChanged; // Handle deletion too just in case
 
                 _watcher.EnableRaisingEvents = true;
             }
@@ -43,6 +44,29 @@ namespace Loupedeck.ExamplePlugin
             {
                 Console.WriteLine("Watcher Error: " + ex.Message);
             }
+        }
+
+        private DateTime _lastUpdate = DateTime.MinValue;
+        private readonly object _lock = new object();
+
+        private void OnFileChanged(object sender, FileSystemEventArgs e)
+        {
+            lock (_lock)
+            {
+                // Simple debounce: ignore updates if they happen within 100ms of the last one
+                if ((DateTime.Now - _lastUpdate).TotalMilliseconds < 100)
+                    return;
+
+                _lastUpdate = DateTime.Now;
+            }
+
+            // Force update on a thread pool thread to avoid blocking the watcher
+            System.Threading.Tasks.Task.Run(async () => 
+            {
+                // Give the file a moment to be fully written/released
+                await System.Threading.Tasks.Task.Delay(100); 
+                this.ActionImageChanged(null);
+            });
         }
 
         protected override void RunCommand(String actionParameter)
