@@ -22,17 +22,35 @@ outputs:
     enabled: true
     blender_host: localhost
     blender_port: 8888
-    drag_sensitivity: 1.0  # Direct multiplier (sensitivity handled in Blender)
-    mappings:
-      # Direct one-to-one gesture-to-command mappings
-      PINCH_DRAG: rotate_viewport      # Pinch + drag → Rotate view (yaw + pitch)
-      ROTATE: rotate_viewport          # Alternative name for PINCH rotation
-      OPEN_PALM: play_animation        # Open palm → Play animation
-      CLOSED_FIST: stop_animation      # Closed fist → Stop animation
-      PLAY: play_animation             # Alternative PLAY command
-      STOP: stop_animation             # Alternative STOP command
-      V_GESTURE: pan_viewport          # V-gesture → Pan viewport
-      NAVIGATE: pan_viewport           # Alternative navigation command
+    
+    # Modular handler configuration
+    handlers:
+      blender_viewport:
+        enabled: true
+        priority: 75
+        gestures:
+          - PINCH_DRAG
+          - ROTATE
+          - V_GESTURE
+          - NAVIGATE
+        sensitivity: 1.0
+        invert_x: false
+        invert_y: false
+        smooth_factor: 1.0
+        cooldown: 0.0
+      
+      blender_animation:
+        enabled: true
+        priority: 50
+        gestures:
+          - OPEN_PALM
+          - PLAY
+          - CLOSED_FIST
+          - STOP
+          - POINTING
+        auto_loop: true
+        frame_step: 1
+        cooldown: 0.5
   
   loupedeck:
     enabled: false  # Set to true to use with C# Loupedeck plugin

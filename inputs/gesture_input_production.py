@@ -152,7 +152,7 @@ class GestureInputBase:
             gesture_name = result.name
             self.last_confidence = result.confidence
             
-            # State Machine Logic
+            # Animation Control (PLAY/STOP) - these control simulation state
             if gesture_name == "CLOSED_FIST":
                 if self.is_playing:
                     self.is_playing = False
@@ -169,26 +169,43 @@ class GestureInputBase:
                 self.last_command = "PLAY (Palm)"
                 return "OPEN_PALM"
             
-            if not self.is_playing:
-                self.last_command = "STOPPED (Waiting...)"
-                return "STOPPED"
-
-            # Handle Pinch Drag
+            # Automatic Modality Switching
+            # PINCH = Rotation Mode (always available)
+            # V_GESTURE = Navigation Mode (always available)
+            
             if gesture_name == "PINCH":
+                # Switch to rotation modality
+                if self.is_v_gesturing:
+                    # Switching from navigation to rotation
+                    self.is_v_gesturing = False
+                    self.last_v_pos = None
+                    logger.info("🔄 Switched to ROTATION mode")
+                
                 self._handle_pinch_drag(result, hand_landmarks)
                 self.last_command = "ROTATING (Pinch)"
                 return "PINCH_DRAG"
-            # Handle V-gesture Movement
+                
             elif gesture_name == "V_GESTURE":
+                # Switch to navigation modality
+                if self.is_pinching:
+                    # Switching from rotation to navigation
+                    self.is_pinching = False
+                    self.pinch_start_pos = None
+                    self.last_pinch_pos = None
+                    logger.info("🧭 Switched to NAVIGATION mode")
+                
                 self._handle_v_movement(result)
                 self.last_command = "NAVIGATING (V)"
                 return "V_NAVIGATE"
+                
             else:
-                # Reset pinch/V if we detect something else
-                self.is_pinching = False
-                self.pinch_start_pos = None
-                self.is_v_gesturing = False
-                self.last_v_pos = None
+                # Other gestures - reset both modalities
+                if self.is_pinching or self.is_v_gesturing:
+                    self.is_pinching = False
+                    self.pinch_start_pos = None
+                    self.last_pinch_pos = None
+                    self.is_v_gesturing = False
+                    self.last_v_pos = None
                 
                 # Publish other gestures
                 self._publish_event(gesture_name, result.data)
@@ -275,24 +292,43 @@ class GestureInputBase:
         h, w, _ = image.shape
         
         # Top bar for status
-        cv2.rectangle(image, (0, 0), (w, 80), (0, 0, 0), -1)
+        cv2.rectangle(image, (0, 0), (w, 100), (0, 0, 0), -1)
         
         # System State (PLAYING/STOPPED)
         status_text = "PLAYING" if self.is_playing else "STOPPED"
         status_color = (0, 255, 0) if self.is_playing else (0, 0, 255)
-        cv2.putText(image, f"SYSTEM: {status_text}", 
-                   (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, status_color, 2)
+        cv2.putText(image, f"SIM: {status_text}", 
+                   (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, status_color, 2)
+        
+        # Current Modality
+        if self.is_pinching:
+            modality = "ROTATION"
+            modality_color = (255, 165, 0)  # Orange
+        elif self.is_v_gesturing:
+            modality = "NAVIGATION"
+            modality_color = (0, 255, 255)  # Cyan
+        else:
+            modality = "IDLE"
+            modality_color = (128, 128, 128)  # Gray
+        
+        cv2.putText(image, f"MODE: {modality}", 
+                   (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, modality_color, 2)
         
         # Current Command
-        cmd_color = (255, 255, 0) # Cyan
+        cmd_color = (255, 255, 0)  # Yellow
         cv2.putText(image, f"CMD: {self.last_command}", 
-                   (300, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, cmd_color, 2)
+                   (300, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, cmd_color, 2)
                    
         # Confidence bar if command detected
         if self.last_command != "None" and self.last_confidence > 0:
             bar_width = int(self.last_confidence * 200)
-            cv2.rectangle(image, (300, 55), (300 + bar_width, 65), (0, 255, 255), -1)
-            cv2.rectangle(image, (300, 55), (500, 65), (255, 255, 255), 1)
+            cv2.rectangle(image, (300, 55), (300 + bar_width, 70), (0, 255, 255), -1)
+            cv2.rectangle(image, (300, 55), (500, 70), (255, 255, 255), 1)
+            
+        # Help text
+        help_text = "PINCH=Rotate | V=Navigate | PALM=Play | FIST=Stop"
+        cv2.putText(image, help_text, 
+                   (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
     
     def _publish_event(self, action: str, data: Dict[str, Any]):
         """Publish gesture event to EventBus."""

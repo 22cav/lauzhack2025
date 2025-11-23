@@ -22,29 +22,24 @@ logger = logging.getLogger(__name__)
 
 class BlenderOutput:
     """
-    Blender integration handler.
+    Blender integration handler with modular gesture processing.
     
-    Subscribes to gesture and button events and sends commands to Blender
-    for viewport manipulation, animation control, and object interaction.
+    Uses the handler system to process gestures through configurable
+    handlers instead of hardcoded mappings.
     
     Communication Methods:
     1. Socket-based (current): Simple TCP socket for sending JSON commands
     2. Future: Blender addon with embedded gesture engine
-    
-    Example mappings:
-    - PINCH_DRAG → Rotate viewport
-    - OPEN_PALM → Play animation
-    - CLOSED_FIST → Pause animation
-    - POINTING → Select object
     """
     
-    def __init__(self, event_bus: EventBus, config: Dict[str, Any]):
+    def __init__(self, event_bus: EventBus, config: Dict[str, Any], handler_manager=None):
         """
         Initialize Blender output.
         
         Args:
             event_bus: EventBus instance for subscribing to events
             config: Configuration dictionary with Blender settings
+            handler_manager: Optional HandlerManager instance (created if not provided)
         """
         self.event_bus = event_bus
         self.config = config
@@ -54,23 +49,43 @@ class BlenderOutput:
         self.port = config.get('blender_port', 8888)
         self.enabled = config.get('enabled', True)
         
-        # Event mappings (from config)
-        self.mappings = config.get('mappings', {
-            'PINCH_DRAG': 'rotate_viewport',
-            'OPEN_PALM': 'play_animation',
-            'CLOSED_FIST': 'pause_animation',
-            'POINTING': 'next_frame',
-            'BUTTON_1_PRESS': 'toggle_edit_mode'
-        })
-        
         # Socket connection
         self.socket = None
         self.connected = False
         
-        # Drag state for smooth viewport control
-        self.drag_sensitivity = config.get('drag_sensitivity', 100.0)
+        # Handler system
+        self.handler_manager = handler_manager
+        if self.handler_manager is None:
+            # Create handler system if not provided
+            self._initialize_handlers()
         
         logger.info(f"BlenderOutput initialized (Blender at {self.host}:{self.port})")
+    
+    def _initialize_handlers(self):
+        """Initialize handler system with Blender handlers."""
+        from core.gesture_handler import HandlerRegistry, HandlerManager
+        from handlers.blender_viewport_handler import create_blender_viewport_handler
+        from handlers.blender_animation_handler import create_blender_animation_handler
+        
+        # Create registry and manager
+        registry = HandlerRegistry()
+        
+        # Register handler factories
+        registry.register_factory('blender_viewport', create_blender_viewport_handler)
+        registry.register_factory('blender_animation', create_blender_animation_handler)
+        
+        # Load handler configuration
+        handler_config = self.config.get('handlers', {})
+        
+        # Create handlers from config
+        for handler_name, handler_cfg in handler_config.items():
+            if handler_cfg.get('enabled', True):
+                registry.create_from_config(handler_name, handler_cfg)
+        
+        # Create manager
+        self.handler_manager = HandlerManager(registry)
+        
+        logger.info(f"Initialized {len(registry.list_handlers())} handlers")
     
     def start(self):
         """Start listening to events and attempt Blender connection."""
@@ -117,47 +132,23 @@ class BlenderOutput:
     
     def _handle_event(self, event: Event):
         """
-        Handle incoming events and translate to Blender commands.
+        Handle incoming events through the handler system.
         
         Args:
             event: Event to handle
         """
-        action = event.action
+        # Process event through handler system
+        results = self.handler_manager.process_event(event)
         
-        # Check if we have a mapping for this action
-        if action not in self.mappings:
-            return
-        
-        blender_command = self.mappings[action]
-        
-        # Build command data
-        command_data = {
-            'command': blender_command,
-            'timestamp': event.timestamp
-        }
-        
-        # Add event-specific data
-        if action in ['PINCH_DRAG', 'ROTATE']:
-            # Direct dx/dy for viewport rotation (yaw + pitch)
-            # event.data now contains dx/dy directly from gesture_input_production
-            dx = event.data.get('dx', 0)
-            dy = event.data.get('dy', 0)
-            command_data['dx'] = dx * self.drag_sensitivity
-            command_data['dy'] = dy * self.drag_sensitivity
+        # Send each result to Blender
+        for result in results:
+            handler_name = result['handler']
+            command_data = result['result']
             
-        elif action in ['V_GESTURE', 'NAVIGATE']:
-            # Direct dx/dy for viewport panning
-            dx = event.data.get('dx', 0)
-            dy = event.data.get('dy', 0)
-            command_data['dx'] = dx * self.drag_sensitivity
-            command_data['dy'] = dy * self.drag_sensitivity
+            logger.debug(f"Handler '{handler_name}' produced command: {command_data.get('command')}")
             
-        elif action.startswith('BUTTON_'):
-            # Pass button data
-            command_data['button_id'] = event.data.get('button_id')
-        
-        # Send to Blender
-        self._send_command(command_data)
+            # Send to Blender
+            self._send_command(command_data)
     
     def _send_command(self, command_data: Dict[str, Any]):
         """

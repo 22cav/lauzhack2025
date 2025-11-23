@@ -231,30 +231,31 @@ class GestureControlListener:
             self.running = False
 
     def _execute_in_main_thread(self, command):
-        print(f"[Execute] Command={command.get('command')}, Modality={self.modality_manager.get_modality_name()}")
+        print(f"[Execute] Command={command.get('command')}")
         
         cmd_type = command.get('command')
         
-        # Routing Logic
-        if self.modality_manager.active_modality == Modality.CONTROL:
-            if cmd_type == 'rotate_viewport':
-                print(f"[Execute] Rotating viewport: dx={command.get('dx')}, dy={command.get('dy')}")
-                self._rotate_viewport(command)
-            elif cmd_type == 'play_animation': 
-                if not bpy.context.screen.is_animation_playing:
-                    print(f"[Execute] Playing animation")
-                    bpy.ops.screen.animation_play()
-            elif cmd_type == 'stop_animation': 
-                if bpy.context.screen.is_animation_playing:
-                    print(f"[Execute] Stopping animation")
-                    bpy.ops.screen.animation_cancel()
-                
-        elif self.modality_manager.active_modality == Modality.NAVIGATION:
-            if cmd_type == 'pan_viewport':
-                print(f"[Execute] Panning viewport: dx={command.get('dx')}, dy={command.get('dy')}")
-                self._pan_viewport(command)
+        # Handle all commands regardless of modality
+        # This matches the automatic modality switching in the gesture input
+        if cmd_type == 'rotate_viewport':
+            print(f"[Execute] Rotating viewport: dx={command.get('dx')}, dy={command.get('dy')}")
+            self._rotate_viewport(command)
             
-        return None # Unregister timer
+        elif cmd_type == 'pan_viewport':
+            print(f"[Execute] Panning viewport: dx={command.get('dx')}, dy={command.get('dy')}")
+            self._pan_viewport(command)
+            
+        elif cmd_type == 'play_animation': 
+            if not bpy.context.screen.is_animation_playing:
+                print(f"[Execute] Playing animation")
+                bpy.ops.screen.animation_play()
+                
+        elif cmd_type == 'stop_animation': 
+            if bpy.context.screen.is_animation_playing:
+                print(f"[Execute] Stopping animation")
+                bpy.ops.screen.animation_cancel()
+                
+        return None  # Unregister timer
 
     def _rotate_viewport(self, command):
         """Simplified viewport rotation."""
