@@ -8,6 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw
 from gtts import gTTS
+import re
 
 # --- CONFIGURATION ---
 load_dotenv()
@@ -198,7 +199,7 @@ def from_transcription_to_data(transcription):
         "JSON Structure:\n"
         "{\n"
         '  "command_name": "One Word Action Name",\n'
-        '  "python_code": "The raw procedural python code...",\n'
+        '  "python_code": "The raw procedural python code..."\n'
         "}"
     )
 
@@ -247,7 +248,7 @@ def from_transcription_to_data(transcription):
                 
                 "JSON Structure:\n"
                 "{\n"
-                '  "feedback": "Your short confirming sentence describing the code.",\n'
+                '  "feedback": "Your short confirming sentence describing the code."\n'
                 "}"
             )
             audio_payload = {
