@@ -1,0 +1,26 @@
+INFO:__main__:Loaded configuration from /Users/matte/MDS/Personal/lauzhack/config/blender_mode.yaml
+INFO:__main__:============================================================
+INFO:__main__:🎮 Gesture Control System Starting
+INFO:__main__:============================================================
+ERROR:__main__:Failed to initialize gesture input: cannot import name 'create_gesture_input' from 'inputs.gesture_input_production' (/Users/matte/MDS/Personal/lauzhack/inputs/gesture_input_production.py)
+Traceback (most recent call last):
+  File "/Users/matte/MDS/Personal/lauzhack/main_orchestrator.py", line 113, in _initialize_inputs
+    from inputs.gesture_input_production import create_gesture_input
+ImportError: cannot import name 'create_gesture_input' from 'inputs.gesture_input_production' (/Users/matte/MDS/Personal/lauzhack/inputs/gesture_input_production.py)
+INFO:outputs.blender_output:BlenderOutput initialized (Blender at localhost:8888)
+INFO:__main__:✓ Blender output initialized (External process launch disabled)
+INFO:__main__:
+📥 Starting input modules...
+INFO:__main__:
+📤 Starting output modules...
+INFO:core.event_system:Subscribed to GESTURE events
+INFO:core.event_system:Subscribed to BUTTON events
+INFO:outputs.blender_output:Connected to Blender at localhost:8888
+INFO:outputs.blender_output:BlenderOutput started
+INFO:__main__:
+============================================================
+INFO:__main__:✅ System running
+INFO:__main__:👀 Listening for commands...
+INFO:__main__:⌨️  Press Ctrl+C to exit
+INFO:__main__:============================================================
+

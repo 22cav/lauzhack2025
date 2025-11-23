@@ -27,7 +27,6 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent))
 
 from core.event_system import EventBus
-# from core.launcher import launch_blender  <-- REMOVED: No longer needed
 
 # NOTE: inputs/outputs import cv2/mediapipe at module import time. We will
 # import those modules later in main() after parsing args so we can set
@@ -130,16 +129,6 @@ class GestureControlOrchestrator:
                 logger.error(f"Failed to initialize gesture input: {e}")
                 import traceback
                 traceback.print_exc()
-        
-        # MX Console input
-        mx_config = inputs_config.get('mx_console', {})
-        if mx_config.get('enabled', False):
-            try:
-                mx_input = MXConsoleInput(self.event_bus, mx_config)
-                self.inputs.append(mx_input)
-                logger.info("✓ MX Console input initialized")
-            except Exception as e:
-                logger.error(f"Failed to initialize MX Console input: {e}")
     
     def _initialize_outputs(self):
         """Initialize output modules based on configuration."""
@@ -149,35 +138,19 @@ class GestureControlOrchestrator:
         blender_config = outputs_config.get('blender', {})
         if blender_config.get('enabled', False):
             try:
-                # --- MODIFIED: Auto-launch logic removed completely ---
-                # We simply initialize the connection class, assuming Blender 
-                # is already running or will be started manually.
+                # Auto-launch Blender if configured
+                if blender_config.get('auto_launch_blender', False):
+                    self.blender_process = launch_blender(blender_config)
+                    if self.blender_process:
+                        logger.info("✓ Blender auto-launched successfully")
+                        # Give it a moment to start
+                        time.sleep(2)
                 
                 blender_output = BlenderOutput(self.event_bus, blender_config)
                 self.outputs.append(blender_output)
-                logger.info("✓ Blender output initialized (External process launch disabled)")
+                logger.info("✓ Blender output initialized")
             except Exception as e:
                 logger.error(f"Failed to initialize Blender output: {e}")
-        
-        # Loupedeck output
-        loupedeck_config = outputs_config.get('loupedeck', {})
-        if loupedeck_config.get('enabled', False):
-            try:
-                loupedeck_output = LoupedeckOutput(self.event_bus, loupedeck_config)
-                self.outputs.append(loupedeck_output)
-                logger.info("✓ Loupedeck output initialized")
-            except Exception as e:
-                logger.error(f"Failed to initialize Loupedeck output: {e}")
-        
-        # System output
-        system_config = outputs_config.get('system', {})
-        if system_config.get('enabled', False):
-            try:
-                system_output = SystemOutput(self.event_bus, system_config)
-                self.outputs.append(system_output)
-                logger.info("✓ System output initialized")
-            except Exception as e:
-                logger.error(f"Failed to initialize system output: {e}")
     
     def start(self):
         """Start all modules."""
@@ -240,7 +213,7 @@ class GestureControlOrchestrator:
             except Exception as e:
                 logger.error(f"Error stopping output: {e}")
         
-        # Stop Blender if we started it (Logic kept for safety, though it will be None)
+        # Stop Blender if we started it
         if self.blender_process:
             logger.info("Terminating Blender process...")
             try:
@@ -312,21 +285,26 @@ def main():
 
     if args.debug:
         # raise logging level to DEBUG for all loggers
-        logging.getLogger().setLevel(logging.DEBUG)
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.DEBUG)
+        
+        # Ensure we have a handler that prints to stdout
+        if not root_logger.handlers:
+            handler = logging.StreamHandler(sys.stdout)
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            root_logger.addHandler(handler)
+            
+        logger.info("🐛 Debug logging enabled")
 
     # Import input/output modules now that OPENCV env var is set (if any).
     # Assign into module globals so other classes (defined above) can reference
     # the symbols by name.
     from inputs.gesture_input import GestureInput as _GestureInput
-    from inputs.mx_console_input import MXConsoleInput as _MXConsoleInput
     from outputs.blender_output import BlenderOutput as _BlenderOutput
-    from outputs.loupedeck_output import LoupedeckOutput as _LoupedeckOutput
-    from outputs.system_output import SystemOutput as _SystemOutput
+    
     globals()['GestureInput'] = _GestureInput
-    globals()['MXConsoleInput'] = _MXConsoleInput
     globals()['BlenderOutput'] = _BlenderOutput
-    globals()['LoupedeckOutput'] = _LoupedeckOutput
-    globals()['SystemOutput'] = _SystemOutput
     
     # Create and run orchestrator (pass optional camera index override)
     orchestrator = GestureControlOrchestrator(args.config, camera_index_override=args.camera_index)

@@ -219,8 +219,8 @@ class GestureInputBase:
             dx = current_pos['x'] - self.last_pinch_pos['x']
             dy = current_pos['y'] - self.last_pinch_pos['y']
             
-            # Scale up a bit
-            sensitivity = 5.0
+            # Increased sensitivity for visible movement
+            sensitivity = 100.0
             
             if abs(dx) > 0.001 or abs(dy) > 0.001:
                 self._publish_event("ROTATE", {
@@ -246,7 +246,7 @@ class GestureInputBase:
             dx = -(current_pos['x'] - self.last_v_pos['x'])  # Negate for mirror correction
             dy = current_pos['y'] - self.last_v_pos['y']
             
-            sensitivity = 5.0
+            sensitivity = 100.0
             
             if abs(dx) > 0.001 or abs(dy) > 0.001:
                 self._publish_event("NAVIGATE", {
@@ -296,6 +296,7 @@ class GestureInputBase:
     
     def _publish_event(self, action: str, data: Dict[str, Any]):
         """Publish gesture event to EventBus."""
+        logger.info(f"📤 Publishing event: {action} with data: {data}")
         event = Event(
             type=EventType.GESTURE,
             source="gesture_engine",

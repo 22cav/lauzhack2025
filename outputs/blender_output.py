@@ -56,7 +56,7 @@ class BlenderOutput:
         
         # Event mappings (from config)
         self.mappings = config.get('mappings', {
-            'PINCH_DRAG': 'viewport_rotate',
+            'PINCH_DRAG': 'rotate_viewport',
             'OPEN_PALM': 'play_animation',
             'CLOSED_FIST': 'pause_animation',
             'POINTING': 'next_frame',
