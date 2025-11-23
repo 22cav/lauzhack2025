@@ -231,10 +231,7 @@ class GestureControlListener:
             self.running = False
 
     def _execute_in_main_thread(self, command):
-        print(f"[Execute] Active={self.active}, Command={command.get('command')}, Modality={self.modality_manager.get_modality_name()}")
-        if not self.active:
-            print(f"[Execute] SKIPPED - Gestures not active")
-            return None
+        print(f"[Execute] Command={command.get('command')}, Modality={self.modality_manager.get_modality_name()}")
         
         cmd_type = command.get('command')
         
@@ -260,7 +257,7 @@ class GestureControlListener:
         return None # Unregister timer
 
     def _rotate_viewport(self, command):
-        """Orbit camera around scene center (tumble rotation)."""
+        """Simplified viewport rotation."""
         dx, dy = command.get('dx', 0), command.get('dy', 0)
         sens = bpy.context.scene.gesture_props.rotation_sensitivity
         
@@ -268,43 +265,33 @@ class GestureControlListener:
             if area.type == 'VIEW_3D':
                 rv3d = area.spaces.active.region_3d
                 
-                # Get the current view center (pivot point)
-                view_center = rv3d.view_location.copy()
-                view_distance = rv3d.view_distance
-                
-                # Create rotation quaternions for horizontal (Z-axis) and vertical (X-axis) orbiting
-                # Horizontal rotation (left/right orbit around scene)
+                # Simple rotation around Z-axis (horizontal) and local X-axis (vertical)
                 rot_z = mathutils.Quaternion((0, 0, 1), dx * sens)
                 
-                # Vertical rotation (up/down orbit around scene)
-                # We need to rotate around the view's local X-axis
+                # Get the view's right vector for vertical rotation
                 view_matrix = rv3d.view_matrix.inverted()
                 right_vector = view_matrix.col[0].to_3d().normalized()
                 rot_x = mathutils.Quaternion(right_vector, -dy * sens)
                 
-                # Combine rotations
-                combined_rotation = rot_z @ rot_x
-                
-                # Apply rotation to view
-                rv3d.view_rotation = combined_rotation @ rv3d.view_rotation
-                
-                # Calculate new camera position to orbit around the center
-                # The camera should move in a sphere around the view center
-                view_vec = mathutils.Vector((0, 0, view_distance))
-                rotated_vec = rv3d.view_rotation @ view_vec
-                rv3d.view_location = view_center - rotated_vec
+                # Apply combined rotation
+                rv3d.view_rotation = rot_z @ rot_x @ rv3d.view_rotation
                 
                 area.tag_redraw()
                 break
 
     def _pan_viewport(self, command):
+        """Simplified viewport panning."""
         dx, dy = command.get('dx', 0), command.get('dy', 0)
         sens = bpy.context.scene.gesture_props.pan_sensitivity
+        
         for area in bpy.context.screen.areas:
             if area.type == 'VIEW_3D':
                 rv3d = area.spaces.active.region_3d
+                
+                # Simple direct translation
                 rv3d.view_location.x -= dx * sens
                 rv3d.view_location.z += dy * sens
+                
                 area.tag_redraw()
                 break
 
