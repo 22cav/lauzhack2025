@@ -1,57 +1,37 @@
-# Files to ignore
-
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environments
-venv/
-ENV/
-env/
-
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# Logs
-*.log
-
-# Test coverage
-.coverage
-htmlcov/
-
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# Legacy/obsolete
-GestureControlPlugin/gesture_engine_legacy/
-*.bak
-*.old
 
 # Blender
 *.blend1
 *.blend2
+
+# Addon build
+build/
+dist/
+*.zip
+
+# Dependencies (will be bundled later)
+libs/*
+libs/.gitkeep
+libs/README.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+tests/__pycache__/
+
+# Old structure (to be removed)
+OLD_REFERENCE/*

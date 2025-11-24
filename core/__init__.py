@@ -1,7 +1,5 @@
 """
-Core modules for the event-driven gesture control system.
+Core System Initialization
 """
 
-from .event_system import Event, EventBus
-
-__all__ = ['Event', 'EventBus']
+__all__ = ['event_system', 'modality_manager']
