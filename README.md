@@ -1,8 +1,13 @@
 # 3DX - Hand Gesture Control for Blender
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue) ![Blender](https://img.shields.io/badge/blender-3.0+-orange) ![Python](https://img.shields.io/badge/python-3.9+-green)
+<div align="center">
+  <img src="logo/logo.jpg" alt="3DX Logo" width="400"/>
+  <br>
+</div>
 
-**Control Blender's 3D viewport with hand gestures using your webcam.** Production-ready addon with MediaPipe hand tracking, event-driven architecture, and Pydantic validation.
+![Version](https://img.shields.io/badge/version-1.0.0-blue) ![Blender](https://img.shields.io/badge/blender-5.0+-orange) ![Python](https://img.shields.io/badge/python-3.11+-green) ![License](https://img.shields.io/badge/license-GPLv3-red)
+
+**Control Blender's 3D viewport with hand gestures using your webcam.**
 
 ## Features
 
@@ -15,39 +20,43 @@
 
 ## Quick Start
 
-### 1. Install Dependencies
+### 1. Launch Blender via Command Line (Required)
 
-Install in **Blender's Python** (not system Python):
+**Crucial Step:** You must launch Blender from the terminal to ensure it has permission to access your camera on macOS.
 
 ```bash
 # macOS
-/Applications/Blender.app/Contents/Resources/4.2/python/bin/python3.11 -m pip install opencv-python mediapipe numpy pydantic
-
-# Windows
-"C:\Program Files\Blender Foundation\Blender 4.2\4.2\python\bin\python.exe" -m pip install opencv-python mediapipe numpy pydantic
-
-# Linux
-/usr/share/blender/4.2/python/bin/python3.11 -m pip install opencv-python mediapipe numpy pydantic
+/Applications/Blender.app/Contents/MacOS/Blender
 ```
 
 ### 2. Install Addon
 
-1. Download/clone this repository
-2. Blender → Edit → Preferences → Add-ons → Install
-3. Select the `3dx` folder (or ZIP it first)
-4. Enable "3DX - Gesture Control"
+1. Download the `3dx.zip` release (or zip the repository yourself).
+2. Blender → Edit → Preferences → Add-ons → Install...
+3. Select `3dx.zip`.
+4. Enable "3DX - Gesture Control".
+
+**Note:** Dependencies (`opencv-python`, `mediapipe`, `numpy`, `pydantic`) are **automatically installed** when you enable the addon. You do not need to install them manually.
 
 ### 3. Use
 
-1. Open 3D Viewport → Press `N` → Select **3DX** tab
-2. Click **Start** → Grant camera permission
-3. Perform gestures in front of camera
+1. Open 3D Viewport → Press `N` → Select **3DX** tab.
+2. Click **Start Engine**.
+3. Perform gestures in front of camera.
+
+## Building from Source
+
+To create the addon zip file without including development caches or git files, run:
+
+```bash
+zip -r 3dx.zip 3dx/ -x "3dx/__pycache__/*" "3dx/*/__pycache__/*" "3dx/.git/*" "3dx/tests/*" "3dx/.pytest_cache/*"
+```
 
 ## Architecture
 
 ```
 3dx/
-├── __init__.py              # Addon registration
+├── __init__.py              # Addon registration & dependency management
 ├── config.py                # Constants, Pydantic models
 ├── gesture_engine.py        # Main processing loop
 ├── operators.py             # Start/stop/settings operators
@@ -81,7 +90,6 @@ Install in **Blender's Python** (not system Python):
 - **Type-Safe**: Full type hints + Pydantic validation on all data structures
 - **Modular**: Gesture library, handlers, and filters are independently extensible
 - **Robust**: Comprehensive error handling, graceful camera fallback
-- **Tested**: 80+ unit tests (event system, gestures, handlers, utils)
 - **Performant**: ~30 FPS frame processing, configurable sensitivity
 
 ## Configuration
@@ -98,37 +106,19 @@ Access via Edit → Preferences → Add-ons → 3DX:
 | Show Preview | Display camera feed | False |
 | Enable [Gesture] | Toggle individual gestures | All enabled |
 
-## Development
-
-**Tech Stack**: Python 3.9+, MediaPipe Hands, OpenCV, Pydantic, Blender API
-
-**Code Style**: Google-style docstrings, type hints, `[3DX Module]` logging format
-
-**Testing**: Run tests in Blender's Python environment or install `fake-bpy-module`:
-```bash
-pip install pytest fake-bpy-module-latest
-python -m pytest tests/ -v
-```
-
-**Extending**:
-- Add gestures: Implement `Gesture` class in `gestures/library/`
-- Add handlers: Subclass `BaseHandler` in `handlers/`
-- Add modalities: Extend `ModalityManager` in `core/`
-
 ## Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| Camera not detected | Check system permissions, try different indices (0,1,2) |
-| Dependencies error | Install in Blender's Python, not system Python |
-| Poor detection | Improve lighting, avoid cluttered backgrounds |
-| Gestures too sensitive | Lower sensitivity in preferences |
-| Addon won't enable | Check Blender console for import errors |
+| **Camera Error** | **Launch Blender from Terminal** to grant permissions. |
+| Dependencies error | Restart Blender after first installation. |
+| Poor detection | Improve lighting, avoid cluttered backgrounds. |
+| Gestures too sensitive | Lower sensitivity in preferences. |
 
 ## License
 
-MIT License
+GNU General Public License v3.0
 
 ## Author
 
-Matteo Caviglia ([@22cav](https://github.com/22cav)) - LauzHack 2025
+Matteo Caviglia ([@22cav](https://github.com/22cav))
