@@ -160,20 +160,14 @@ class VGesture(NavigationGesture):
     def detect(self, landmarks: Any, context: Dict[str, Any]) -> Optional[GestureResult]:
         """
         Detect V-gesture and calculate movement delta.
-        
-        Criteria:
-        - Index and middle fingers must be extended
-        - Ring and pinky fingers must be curled
-        - Thumb should be curled or neutral (not extended like palm)
-        - Fingers should have decent separation (V shape)
-        
-        Args:
-            landmarks: MediaPipe hand landmarks
-            context: Context dictionary
-            
-        Returns:
-            GestureResult with dx, dy data if V-gesture detected, None otherwise
         """
+        # Load tuning parameters
+        tuning = config.TUNING_CONFIG.get("gestures", {}).get("v_gesture", {})
+        finger_spread_min = tuning.get("finger_spread_min", 0.03)
+        finger_spread_max = tuning.get("finger_spread_max", 0.18)
+        thumb_ext_max = tuning.get("thumb_extension_ratio_max", 2.5)
+        curl_threshold = tuning.get("ring_pinky_curl_threshold", 0.1)
+
         wrist_idx = HandLandmarkIndices.WRIST
         
         # 1. Check if index and middle fingers are extended
@@ -195,6 +189,8 @@ class VGesture(NavigationGesture):
             return None
         
         # 2. Check if ring and pinky are curled
+        # Relaxed check: instead of strict boolean, check distance to wrist or palm
+        # Using existing helper but with awareness that it might be too strict
         ring_curled = is_finger_curled(
             landmarks, 
             HandLandmarkIndices.RING_FINGER_TIP, 
@@ -208,13 +204,27 @@ class VGesture(NavigationGesture):
             wrist_idx
         )
         
-        # V-gesture requires ring and pinky to be curled
+        # If strict check fails, try a more lenient distance check
+        # (Tip should be closer to wrist than PIP is)
+        if not ring_curled:
+             ring_tip = landmarks.landmark[HandLandmarkIndices.RING_FINGER_TIP]
+             ring_mcp = landmarks.landmark[HandLandmarkIndices.RING_FINGER_MCP]
+             wrist = landmarks.landmark[wrist_idx]
+             # If tip is close to MCP/Palm, count it as curled enough
+             if calculate_distance(ring_tip, ring_mcp) < curl_threshold:
+                 ring_curled = True
+
+        if not pinky_curled:
+             pinky_tip = landmarks.landmark[HandLandmarkIndices.PINKY_TIP]
+             pinky_mcp = landmarks.landmark[HandLandmarkIndices.PINKY_MCP]
+             if calculate_distance(pinky_tip, pinky_mcp) < curl_threshold:
+                 pinky_curled = True
+        
         if not (ring_curled and pinky_curled):
             self.last_position = None
             return None
         
         # 3. Check thumb: should not be extended like in palm gesture
-        # Thumb should be either curled or in neutral position
         thumb_tip = landmarks.landmark[HandLandmarkIndices.THUMB_TIP]
         thumb_mcp = landmarks.landmark[HandLandmarkIndices.THUMB_MCP]
         wrist = landmarks.landmark[wrist_idx]
@@ -222,14 +232,13 @@ class VGesture(NavigationGesture):
         dist_thumb_tip = calculate_distance_squared(thumb_tip, wrist)
         dist_thumb_mcp = calculate_distance_squared(thumb_mcp, wrist)
         
-        # If thumb is strongly extended (much farther than MCP), this might be palm
-        # Allow some extension but not as much as a palm
-        thumb_extension_ratio = dist_thumb_tip / (dist_thumb_mcp + 0.001)  # Avoid division by zero
-        if thumb_extension_ratio > 2.0:  # Thumb is too extended
+        # Allow more extension than before (tuning parameter)
+        thumb_extension_ratio = dist_thumb_tip / (dist_thumb_mcp + 0.001)
+        if thumb_extension_ratio > thumb_ext_max: 
             self.last_position = None
             return None
         
-        # 4. Calculate center point between index and middle fingertips
+        # 4. Calculate center point
         index_tip = landmarks.landmark[HandLandmarkIndices.INDEX_FINGER_TIP]
         middle_tip = landmarks.landmark[HandLandmarkIndices.MIDDLE_FINGER_TIP]
         
@@ -242,31 +251,22 @@ class VGesture(NavigationGesture):
             dx = center_x - self.last_position['x']
             dy = center_y - self.last_position['y']
             
-            # Add noise filtering: ignore very small movements (jitter)
             movement_magnitude = (dx * dx + dy * dy) ** 0.5
-            if movement_magnitude < 0.002:  # Threshold for noise
+            if movement_magnitude < 0.002:
                 dx, dy = 0.0, 0.0
         
-        # Update last position
         self.last_position = {'x': center_x, 'y': center_y}
         
-        # 6. Calculate finger spread for confidence scoring
+        # 6. Calculate finger spread
         finger_spread = calculate_distance(index_tip, middle_tip)
         
-        # V-gesture should have good separation between fingers
-        # Typical V spread: 0.05-0.15
-        # Too close together: might be pointing gesture
-        # Too far: might be transitioning to palm
-        if finger_spread < 0.03:
-            # Fingers too close - might be a different gesture
+        if finger_spread < finger_spread_min:
             confidence = 0.6
-        elif finger_spread > 0.15:
-            # Fingers too spread - might be transitioning
+        elif finger_spread > finger_spread_max:
             confidence = 0.7
         else:
-            # Good V shape
-            # Normalize: 0.03-0.15 maps to 0.8-1.0 confidence
-            spread_score = (finger_spread - 0.03) / 0.12
+            spread_range = finger_spread_max - finger_spread_min
+            spread_score = (finger_spread - finger_spread_min) / spread_range
             confidence = 0.8 + (spread_score * 0.2)
         
         return GestureResult(

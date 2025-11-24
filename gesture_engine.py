@@ -9,8 +9,17 @@ import sys
 import os
 import time
 import bpy
+import warnings
+import logging
 from typing import Optional, Tuple, Any, Dict
 from dataclasses import dataclass
+
+# ------------------------------------------------------------------------
+# 0. WARNING SUPPRESSION
+# Suppress noisy warnings from MediaPipe/Protobuf
+# ------------------------------------------------------------------------
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TensorFlow logging
+warnings.filterwarnings('ignore', category=UserWarning, module='google.protobuf')
 
 # ------------------------------------------------------------------------
 # 1. LIBRARY HANDLING
@@ -82,6 +91,10 @@ class CameraCapture:
                 self.cap = cv2.VideoCapture(self.index)
                 
             if not self.cap.isOpened():
+                if sys.platform == 'darwin':
+                    print("[Camera] Failed to open camera. On macOS, you may need to grant Camera permissions to Blender.")
+                    print("[Camera] Try running Blender from the Terminal: /Applications/Blender.app/Contents/MacOS/Blender")
+                    print("[Camera] Or check System Settings > Privacy & Security > Camera.")
                 return False
 
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
@@ -246,20 +259,19 @@ class GestureEngine:
                     else:
                         scene_props.last_gesture = "None"
                         scene_props.last_confidence = 0.0
-
-                    # Optional: Debug View (OpenCV Window)
-                    # Note: This causes issues on some Mac/Linux Blender builds.
-                    # Use with caution.
-                    prefs = self._get_prefs()
-                    if prefs and prefs.show_preview:
-                        # Draw landmarks
-                        mp.solutions.drawing_utils.draw_landmarks(
-                            frame, landmarks, mp.solutions.hands.HAND_CONNECTIONS)
-                        cv2.imshow("Gesture Preview", frame)
-                        cv2.waitKey(1)
                 else:
                     scene_props.last_gesture = "No Hand"
                     scene_props.last_confidence = 0.0
+
+            # Optional: Debug View (OpenCV Window)
+            prefs = self._get_prefs()
+            if prefs and prefs.show_preview:
+                # Draw landmarks if present
+                if results.multi_hand_landmarks:
+                    mp.solutions.drawing_utils.draw_landmarks(
+                        frame, results.multi_hand_landmarks[0], mp.solutions.hands.HAND_CONNECTIONS)
+                cv2.imshow("Gesture Preview", frame)
+                cv2.waitKey(1)
 
             # 5. FPS Calculation
             frame_end = time.time()
@@ -298,14 +310,12 @@ class GestureEngine:
         try:
             if name == "PINCH_DRAG": # Matches config.GESTURE_PINCH
                 # Rotate Viewport
-                # We need dx, dy from data
                 dx = data.get('dx', 0.0)
                 dy = data.get('dy', 0.0)
                 
                 if abs(dx) > 0.001 or abs(dy) > 0.001:
                     view_ctx = get_3d_view_context()
                     if view_ctx:
-                        # Sensitivity factor
                         sens = 5.0
                         with context.temp_override(**view_ctx):
                             bpy.ops.view3d.view_orbit(angle=dx * sens, type='ORBITRIGHT')
@@ -319,11 +329,43 @@ class GestureEngine:
                 if abs(dx) > 0.001 or abs(dy) > 0.001:
                     view_ctx = get_3d_view_context()
                     if view_ctx:
-                        # Sensitivity factor
-                        sens = 5.0
-                        with context.temp_override(**view_ctx):
-                            bpy.ops.view3d.view_pan(type='PANRIGHT', value=dx * sens)
-                            bpy.ops.view3d.view_pan(type='PANUP', value=-dy * sens) # Invert Y for natural feel
+                        # Direct View Manipulation for Smooth Panning
+                        # We need to access the RegionView3D object
+                        area = view_ctx['area']
+                        region = view_ctx['region']
+                        
+                        # Find the 3D space data
+                        space_data = None
+                        for space in area.spaces:
+                            if space.type == 'VIEW_3D':
+                                space_data = space
+                                break
+                        
+                        if space_data and space_data.region_3d:
+                            rv3d = space_data.region_3d
+                            
+                            # Get view rotation to pan relative to view
+                            view_rot = rv3d.view_rotation
+                            
+                            # Calculate pan vector
+                            # Right vector (local X)
+                            from mathutils import Vector
+                            right_vec = Vector((1.0, 0.0, 0.0))
+                            right_vec.rotate(view_rot)
+                            
+                            # Up vector (local Y)
+                            up_vec = Vector((0.0, 1.0, 0.0))
+                            up_vec.rotate(view_rot)
+                            
+                            # Apply sensitivity
+                            sens = 5.0
+                            pan_delta = (right_vec * (-dx * sens)) + (up_vec * (dy * sens))
+                            
+                            # Update view location
+                            rv3d.view_location += pan_delta
+                            
+                            # Force redraw
+                            area.tag_redraw()
 
             elif name == "OPEN_PALM": # Matches config.GESTURE_PALM
                 # Play Animation

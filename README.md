@@ -1,13 +1,14 @@
-# 3DX - Hand Gesture Control for Blender
-
 <div align="center">
-  <img src="logo/logo.jpg" alt="3DX Logo" width="400"/>
-  <br>
-</div>
+
+![Gesture Control System](logo/logo.jpg)
+
+# 3DX
+
+**Real-time hand gesture recognition for controlling Blender's 3D viewport**
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue) ![Blender](https://img.shields.io/badge/blender-5.0+-orange) ![Python](https://img.shields.io/badge/python-3.11+-green) ![License](https://img.shields.io/badge/license-GPLv3-red)
 
-**Control Blender's 3D viewport with hand gestures using your webcam.**
+</div>
 
 ## Features
 

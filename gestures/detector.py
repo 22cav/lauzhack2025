@@ -1,126 +1,88 @@
 """
 Gesture Detector
 
-Core gesture detection logic with Pydantic validation.
+Core gesture detection logic.
 """
 
-import sys
-import os
+import logging
+from typing import List, Optional, Dict, Any
+from dataclasses import dataclass
+import config
 
-# Add project root to sys.path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-root = os.path.abspath(os.path.join(current_dir, ".."))
-if root not in sys.path:
-    sys.path.append(root)
+@dataclass
+class GestureResult:
+    """Result of a gesture detection."""
+    name: str
+    confidence: float
+    data: Dict[str, Any]
 
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List
-import time
-from pydantic import BaseModel, Field, field_validator
-
-
-class GestureResult(BaseModel):
-    """
-    Result of a gesture detection with validation.
-    """
-    name: str = Field(..., min_length=1)
-    confidence: float = Field(..., ge=0.0, le=1.0)
-    data: Dict[str, Any] = Field(default_factory=dict)
-    timestamp: float = Field(default_factory=time.time)
-    
-    class Config:
-        frozen = True
-
-
-class Gesture(ABC):
-    """
-    Abstract base class for gestures.
-    """
+class Gesture:
+    """Abstract base class for gestures."""
     
     @property
-    @abstractmethod
     def name(self) -> str:
-        """Name of the gesture."""
-        pass
-    
-    @abstractmethod
-    def detect(self, landmarks: Any, context: Dict[str, Any]) -> Optional[GestureResult]:
-        """
-        Detect gesture from landmarks.
+        raise NotImplementedError
         
-        Args:
-            landmarks: MediaPipe landmarks
-            context: Context dictionary
-            
-        Returns:
-            GestureResult if detected, None otherwise
-        """
-        pass
-
+    def detect(self, landmarks: Any, context: Dict[str, Any]) -> Optional[GestureResult]:
+        raise NotImplementedError
 
 class GestureDetector:
     """
-    Manager for gesture detection.
+    Manages multiple gestures and detects the best match.
     """
     
     def __init__(self, min_confidence: float = 0.5):
         self.gestures: List[Gesture] = []
         self.min_confidence = min_confidence
-        self.history: List[GestureResult] = []
-        self.max_history = 30
-    
-    def register(self, gesture: Gesture) -> None:
+        
+        # Hysteresis state
+        self.history_size = config.TUNING_CONFIG.get("engine", {}).get("hysteresis_frames", 2)
+        self.gesture_history = []  # List of detected gesture names
+        self.last_confirmed_gesture = None
+
+    def register(self, gesture: Gesture):
         """Register a new gesture."""
         self.gestures.append(gesture)
-    
-    def detect_best(self, landmarks: Any, context: Optional[Dict[str, Any]] = None) -> Optional[GestureResult]:
+
+    def detect_best(self, landmarks: Any, context: Dict[str, Any]) -> Optional[GestureResult]:
         """
-        Detect the best matching gesture.
-        
-        Args:
-            landmarks: MediaPipe landmarks
-            context: Optional context
-            
-        Returns:
-            Best matching GestureResult or None
+        Detect the single best gesture from the list.
+        Applies hysteresis to prevent flickering.
         """
-        # Safety check: ensure landmarks exist
-        if landmarks is None:
-            return None
-        
-        # Safety check: ensure we have registered gestures
-        if not self.gestures:
-            return None
-        
-        if context is None:
-            context = {}
-        
-        best_result: Optional[GestureResult] = None
+        best_result = None
         max_confidence = 0.0
         
+        # 1. Find best raw detection for this frame
         for gesture in self.gestures:
             try:
                 result = gesture.detect(landmarks, context)
-                
-                # Validate result
                 if result and result.confidence >= self.min_confidence:
                     if result.confidence > max_confidence:
                         max_confidence = result.confidence
                         best_result = result
             except Exception as e:
-                # Log error but continue with other gestures
-                # Don't let one gesture crash the entire detection
-                import logging
                 logging.error(f"Error detecting gesture {gesture.name}: {e}")
-                continue
         
-        if best_result:
-            self._update_history(best_result)
+        # 2. Update History
+        current_gesture_name = best_result.name if best_result else "None"
+        self.gesture_history.append(current_gesture_name)
+        if len(self.gesture_history) > self.history_size:
+            self.gesture_history.pop(0)
             
-        return best_result
-    
-    def _update_history(self, result: GestureResult) -> None:
-        """Update detection history."""
-        self.history.append(result)
-        if len(self.history) > self.max_history:
-            self.history.pop(0)
+        # 3. Apply Hysteresis
+        # Check if the history is consistent
+        # All frames in history must match the current gesture to switch
+        is_consistent = all(name == current_gesture_name for name in self.gesture_history)
+        
+        if is_consistent:
+            self.last_confirmed_gesture = current_gesture_name
+            return best_result
+        else:
+            # If not consistent, stick to the last confirmed gesture if possible
+            # But we can't return a result object if we don't have one for the current frame
+            # So we might return None or the best result but with lower confidence?
+            # Strategy: If the current best result matches the last confirmed, return it.
+            # If it's different, return None (stabilizing period).
+            if best_result and best_result.name == self.last_confirmed_gesture:
+                return best_result
+            return None

@@ -1,0 +1,26 @@
+{
+    "gestures": {
+        "pinch": {
+            "threshold": 0.05,
+            "tightness_factor": 0.3
+        },
+        "v_gesture": {
+            "finger_spread_min": 0.03,
+            "finger_spread_max": 0.18,
+            "thumb_extension_ratio_max": 2.5,
+            "ring_pinky_curl_threshold": 0.1
+        },
+        "fist": {
+            "thumb_tucked_threshold": 0.06,
+            "avg_tip_distance_tight": 0.03,
+            "avg_tip_distance_loose": 0.05
+        },
+        "palm": {
+            "spread_norm_factor": 0.4
+        }
+    },
+    "engine": {
+        "hysteresis_frames": 2,
+        "smoothing_factor": 0.5
+    }
+}

@@ -5,6 +5,8 @@ Default settings, gesture mappings, and configuration constants for the 3DX addo
 Pydantic models for configuration validation.
 """
 
+import json
+import os
 from typing import Dict, Any, Final
 from pydantic import BaseModel, Field
 
@@ -13,6 +15,23 @@ from pydantic import BaseModel, Field
 ADDON_NAME: Final[str] = "3DX"
 ADDON_VERSION: Final[tuple] = (1, 0, 0)
 BLENDER_VERSION_MIN: Final[tuple] = (3, 0, 0)
+
+# Tuning Configuration
+def load_tuning_config() -> Dict[str, Any]:
+    """
+    Load tuning parameters from tuning.json.
+    """
+    try:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        tuning_path = os.path.join(current_dir, "tuning.json")
+        if os.path.exists(tuning_path):
+            with open(tuning_path, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"[3DX] Error loading tuning config: {e}")
+    return {}
+
+TUNING_CONFIG: Final[Dict[str, Any]] = load_tuning_config()
 
 # Configuration Models
 
