@@ -85,9 +85,9 @@ class OpenPalmGesture(BasicGesture):
                 extended_count += 1
         
         # 2. Check thumb separately (different joint structure)
-        thumb_tip = landmarks[HandLandmarkIndices.THUMB_TIP]
-        thumb_mcp = landmarks[HandLandmarkIndices.THUMB_MCP]
-        wrist = landmarks[wrist_idx]
+        thumb_tip = landmarks.landmark[HandLandmarkIndices.THUMB_TIP]
+        thumb_mcp = landmarks.landmark[HandLandmarkIndices.THUMB_MCP]
+        wrist = landmarks.landmark[wrist_idx]
         
         dist_thumb_tip = calculate_distance_squared(thumb_tip, wrist)
         dist_thumb_mcp = calculate_distance_squared(thumb_mcp, wrist)
@@ -165,9 +165,9 @@ class ClosedFistGesture(BasicGesture):
         
         # 2. Check thumb: should be tucked or curled
         # For fist, thumb is usually curled over fingers or tucked at side
-        thumb_tip = landmarks[HandLandmarkIndices.THUMB_TIP]
-        index_mcp = landmarks[HandLandmarkIndices.INDEX_FINGER_MCP]
-        middle_mcp = landmarks[HandLandmarkIndices.MIDDLE_FINGER_MCP]
+        thumb_tip = landmarks.landmark[HandLandmarkIndices.THUMB_TIP]
+        index_mcp = landmarks.landmark[HandLandmarkIndices.INDEX_FINGER_MCP]
+        middle_mcp = landmarks.landmark[HandLandmarkIndices.MIDDLE_FINGER_MCP]
         
         # Check distance to index and middle MCP (thumb should be close to hand body)
         dist_to_index = calculate_distance_squared(thumb_tip, index_mcp)
@@ -185,11 +185,11 @@ class ClosedFistGesture(BasicGesture):
         
         # Calculate confidence based on how tightly curled the fist is
         # Tighter curl = smaller average distance from fingertips to wrist
-        wrist = landmarks[wrist_idx]
+        wrist = landmarks.landmark[wrist_idx]
         total_tip_distance = 0.0
         
         for tip_idx, _ in finger_checks:
-            tip = landmarks[tip_idx]
+            tip = landmarks.landmark[tip_idx]
             total_tip_distance += calculate_distance_squared(tip, wrist)
         
         avg_tip_distance = total_tip_distance / len(finger_checks)
@@ -213,4 +213,3 @@ class ClosedFistGesture(BasicGesture):
                 "avg_tip_distance": avg_tip_distance
             }
         )
-

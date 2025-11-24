@@ -17,15 +17,16 @@ if current_dir not in sys.path:
 import bpy
 from bpy.types import AddonPreferences, PropertyGroup
 
-bl_info: Dict[str, Any] = {
+bl_info = {
     "name": "3DX - Gesture Control",
     "author": "22cav",
     "version": (1, 0, 0),
     "blender": (3, 0, 0),
     "location": "View3D > Sidebar > 3DX",
     "description": "Control Blender with hand gestures using webcam",
-    "warning": "Requires camera access",
+    "warning": "Requires camera access and dependencies (opencv-python, mediapipe, numpy, pydantic)",
     "doc_url": "https://github.com/22cav/3DX",
+    "tracker_url": "https://github.com/22cav/3DX/issues",
     "category": "3D View",
 }
 
@@ -115,10 +116,10 @@ def register() -> None:
         return
     
     try:
-        # Import modules
-        import operators
-        import properties
-        import panels
+        # Import modules using relative imports
+        from . import operators
+        from . import properties
+        from . import panels
         
         # Register property classes
         properties.register()
@@ -144,10 +145,10 @@ def unregister() -> None:
     Cleanly unregisters all classes and cleans up resources.
     """
     try:
-        # Import modules
-        import operators
-        import properties
-        import panels
+        # Import modules using relative imports
+        from . import operators
+        from . import properties
+        from . import panels
         
         # Unregister in reverse order
         panels.unregister()

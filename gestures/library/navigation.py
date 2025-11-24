@@ -78,8 +78,8 @@ class PinchGesture(NavigationGesture):
             GestureResult with dx, dy data if pinching, None otherwise
         """
         # Get thumb and index finger tips
-        thumb_tip = landmarks[HandLandmarkIndices.THUMB_TIP]
-        index_tip = landmarks[HandLandmarkIndices.INDEX_FINGER_TIP]
+        thumb_tip = landmarks.landmark[HandLandmarkIndices.THUMB_TIP]
+        index_tip = landmarks.landmark[HandLandmarkIndices.INDEX_FINGER_TIP]
         
         # Calculate 3D distance between thumb and index
         distance_3d = calculate_distance(thumb_tip, index_tip)
@@ -98,7 +98,7 @@ class PinchGesture(NavigationGesture):
             return None
         
         # Additional check: middle finger should not be too close (avoid confusion with other gestures)
-        middle_tip = landmarks[HandLandmarkIndices.MIDDLE_FINGER_TIP]
+        middle_tip = landmarks.landmark[HandLandmarkIndices.MIDDLE_FINGER_TIP]
         middle_to_thumb = calculate_distance(middle_tip, thumb_tip)
         
         # If middle finger is also very close to thumb, this might be a different gesture
@@ -215,9 +215,9 @@ class VGesture(NavigationGesture):
         
         # 3. Check thumb: should not be extended like in palm gesture
         # Thumb should be either curled or in neutral position
-        thumb_tip = landmarks[HandLandmarkIndices.THUMB_TIP]
-        thumb_mcp = landmarks[HandLandmarkIndices.THUMB_MCP]
-        wrist = landmarks[wrist_idx]
+        thumb_tip = landmarks.landmark[HandLandmarkIndices.THUMB_TIP]
+        thumb_mcp = landmarks.landmark[HandLandmarkIndices.THUMB_MCP]
+        wrist = landmarks.landmark[wrist_idx]
         
         dist_thumb_tip = calculate_distance_squared(thumb_tip, wrist)
         dist_thumb_mcp = calculate_distance_squared(thumb_mcp, wrist)
@@ -230,8 +230,8 @@ class VGesture(NavigationGesture):
             return None
         
         # 4. Calculate center point between index and middle fingertips
-        index_tip = landmarks[HandLandmarkIndices.INDEX_FINGER_TIP]
-        middle_tip = landmarks[HandLandmarkIndices.MIDDLE_FINGER_TIP]
+        index_tip = landmarks.landmark[HandLandmarkIndices.INDEX_FINGER_TIP]
+        middle_tip = landmarks.landmark[HandLandmarkIndices.MIDDLE_FINGER_TIP]
         
         center_x = (index_tip.x + middle_tip.x) / 2
         center_y = (index_tip.y + middle_tip.y) / 2
@@ -281,4 +281,3 @@ class VGesture(NavigationGesture):
                 'thumb_extension_ratio': thumb_extension_ratio
             }
         )
-

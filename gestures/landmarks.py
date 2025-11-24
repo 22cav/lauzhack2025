@@ -151,9 +151,9 @@ def is_finger_extended(landmarks: Any, finger_tip_idx: int, finger_pip_idx: int,
     Returns:
         True if finger is extended
     """
-    tip = landmarks[finger_tip_idx]
-    pip = landmarks[finger_pip_idx]
-    wrist = landmarks[wrist_idx]
+    tip = landmarks.landmark[finger_tip_idx]
+    pip = landmarks.landmark[finger_pip_idx]
+    wrist = landmarks.landmark[wrist_idx]
     
     dist_tip = calculate_distance_squared(tip, wrist)
     dist_pip = calculate_distance_squared(pip, wrist)
@@ -190,8 +190,8 @@ def get_finger_spread(landmarks: Any, tip_indices: list) -> float:
     """
     total_spread = 0.0
     for i in range(len(tip_indices) - 1):
-        p1 = landmarks[tip_indices[i]]
-        p2 = landmarks[tip_indices[i + 1]]
+        p1 = landmarks.landmark[tip_indices[i]]
+        p2 = landmarks.landmark[tip_indices[i + 1]]
         total_spread += calculate_distance(p1, p2)
     
     return total_spread
@@ -207,12 +207,11 @@ def get_hand_center(landmarks: Any) -> Tuple[float, float, float]:
     Returns:
         Tuple of (x, y, z) coordinates for hand center
     """
-    wrist = landmarks[HandLandmarkIndices.WRIST]
-    middle_mcp = landmarks[HandLandmarkIndices.MIDDLE_FINGER_MCP]
+    wrist = landmarks.landmark[HandLandmarkIndices.WRIST]
+    middle_mcp = landmarks.landmark[HandLandmarkIndices.MIDDLE_FINGER_MCP]
     
     center_x = (wrist.x + middle_mcp.x) / 2
     center_y = (wrist.y + middle_mcp.y) / 2
     center_z = (wrist.z + middle_mcp.z) / 2
     
     return (center_x, center_y, center_z)
-

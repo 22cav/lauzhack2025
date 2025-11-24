@@ -1,41 +1,34 @@
-"""
-Property Groups
-
-Addon preferences and runtime state properties with full type annotations.
-"""
-
+import bpy
 import sys
 import os
-
-# Add project root to sys.path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.append(current_dir)
-
-from typing import Set, Tuple
-import bpy
-from bpy.props import (
-    IntProperty, FloatProperty, BoolProperty, 
-    StringProperty, EnumProperty, PointerProperty
-)
-from bpy.types import AddonPreferences, PropertyGroup, Context
-
 import config
 
+# ------------------------------------------------------------------------
+# BLENDER PROPERTIES
+# ------------------------------------------------------------------------
+
+from bpy.props import (
+    IntProperty,
+    FloatProperty,
+    BoolProperty,
+    StringProperty,
+    PointerProperty
+)
+from bpy.types import AddonPreferences, PropertyGroup
 
 class GestureAddonPreferences(AddonPreferences):
     """
     Addon preferences - user settings that persist across sessions.
-    
-    All properties have explicit types and validation ranges.
     """
-    bl_idname: str = __package__
+    # The bl_idname must match the addon module name for Preferences to show up
+    # If running as a script in Text Editor, we use __name__
+    bl_idname = __package__ if __package__ else __name__
     
     # ========================================================================
     # Camera Settings
     # ========================================================================
     
-    camera_index: IntProperty = IntProperty(  # type: ignore
+    camera_index: IntProperty(
         name="Camera Index",
         description="Which camera to use (0 = default, 1 = secondary, etc.)",
         default=config.DEFAULT_SETTINGS["camera_index"],
@@ -47,7 +40,7 @@ class GestureAddonPreferences(AddonPreferences):
     # Gesture Sensitivity
     # ========================================================================
     
-    rotation_sensitivity: FloatProperty = FloatProperty(  # type: ignore
+    rotation_sensitivity: FloatProperty(
         name="Rotation Sensitivity",
         description="How sensitive rotation gestures are (higher = more sensitive)",
         default=config.DEFAULT_SETTINGS["rotation_sensitivity"],
@@ -56,7 +49,7 @@ class GestureAddonPreferences(AddonPreferences):
         precision=2
     )
     
-    pan_sensitivity: FloatProperty = FloatProperty(  # type: ignore
+    pan_sensitivity: FloatProperty(
         name="Pan Sensitivity",
         description="How sensitive panning gestures are (higher = more sensitive)",
         default=config.DEFAULT_SETTINGS["pan_sensitivity"],
@@ -69,13 +62,13 @@ class GestureAddonPreferences(AddonPreferences):
     # Display Options
     # ========================================================================
     
-    show_preview: BoolProperty = BoolProperty(  # type: ignore
+    show_preview: BoolProperty(
         name="Show Camera Preview",
         description="Display camera feed in Blender (performance impact)",
         default=config.DEFAULT_SETTINGS["show_preview"]
     )
     
-    show_debug: BoolProperty = BoolProperty(  # type: ignore
+    show_debug: BoolProperty(
         name="Show Debug Info",
         description="Display debug information in console",
         default=config.DEFAULT_SETTINGS["show_debug"]
@@ -85,25 +78,25 @@ class GestureAddonPreferences(AddonPreferences):
     # Gesture Toggles
     # ========================================================================
     
-    enable_pinch: BoolProperty = BoolProperty(  # type: ignore
+    enable_pinch: BoolProperty(
         name="Enable Pinch Rotation",
         description="Enable pinch gesture for viewport rotation",
         default=config.DEFAULT_SETTINGS["enable_pinch"]
     )
     
-    enable_v_gesture: BoolProperty = BoolProperty(  # type: ignore
+    enable_v_gesture: BoolProperty(
         name="Enable V Navigation",
         description="Enable V gesture for viewport panning",
         default=config.DEFAULT_SETTINGS["enable_v_gesture"]
     )
     
-    enable_palm: BoolProperty = BoolProperty(  # type: ignore
+    enable_palm: BoolProperty(
         name="Enable Palm (Play)",
         description="Enable open palm gesture to play animation",
         default=config.DEFAULT_SETTINGS["enable_palm"]
     )
     
-    enable_fist: BoolProperty = BoolProperty(  # type: ignore
+    enable_fist: BoolProperty(
         name="Enable Fist (Stop)",
         description="Enable closed fist gesture to stop animation",
         default=config.DEFAULT_SETTINGS["enable_fist"]
@@ -113,7 +106,7 @@ class GestureAddonPreferences(AddonPreferences):
     # Advanced Settings
     # ========================================================================
     
-    frame_rate: IntProperty = IntProperty(  # type: ignore
+    frame_rate: IntProperty(
         name="Frame Rate",
         description="Camera processing frame rate (lower = better performance)",
         default=config.DEFAULT_SETTINGS["frame_rate"],
@@ -121,7 +114,7 @@ class GestureAddonPreferences(AddonPreferences):
         max=60
     )
     
-    min_confidence: FloatProperty = FloatProperty(  # type: ignore
+    min_confidence: FloatProperty(
         name="Min Confidence",
         description="Minimum confidence threshold for gesture detection",
         default=config.DEFAULT_SETTINGS["min_confidence"],
@@ -130,10 +123,7 @@ class GestureAddonPreferences(AddonPreferences):
         precision=2
     )
     
-    def draw(self, context: Context) -> None:
-        """
-        Draw preferences panel.
-        """
+    def draw(self, context):
         layout = self.layout
         
         # Camera
@@ -171,7 +161,6 @@ class GestureAddonPreferences(AddonPreferences):
 class GestureRuntimeState(PropertyGroup):
     """
     Runtime state - temporary data that doesn't persist.
-    
     Stores current gesture control state, statistics, and status information.
     """
     
@@ -179,13 +168,13 @@ class GestureRuntimeState(PropertyGroup):
     # Control State
     # ========================================================================
     
-    is_running: BoolProperty = BoolProperty(  # type: ignore
+    is_running: BoolProperty(
         name="Is Running",
         description="Whether gesture control is currently active",
         default=False
     )
     
-    is_paused: BoolProperty = BoolProperty(  # type: ignore
+    is_paused: BoolProperty(
         name="Is Paused",
         description="Whether gesture control is paused",
         default=False
@@ -195,13 +184,13 @@ class GestureRuntimeState(PropertyGroup):
     # Camera State
     # ========================================================================
     
-    camera_ready: BoolProperty = BoolProperty(  # type: ignore
+    camera_ready: BoolProperty(
         name="Camera Ready",
         description="Whether camera is initialized and ready",
         default=False
     )
     
-    camera_error: StringProperty = StringProperty(  # type: ignore
+    camera_error: StringProperty(
         name="Camera Error",
         description="Last camera error message",
         default=""
@@ -211,13 +200,13 @@ class GestureRuntimeState(PropertyGroup):
     # Gesture State
     # ========================================================================
     
-    last_gesture: StringProperty = StringProperty(  # type: ignore
+    last_gesture: StringProperty(
         name="Last Gesture",
         description="Name of last detected gesture",
         default="None"
     )
     
-    last_confidence: FloatProperty = FloatProperty(  # type: ignore
+    last_confidence: FloatProperty(
         name="Last Confidence",
         description="Confidence of last detected gesture",
         default=0.0,
@@ -229,14 +218,14 @@ class GestureRuntimeState(PropertyGroup):
     # Statistics
     # ========================================================================
     
-    frames_processed: IntProperty = IntProperty(  # type: ignore
+    frames_processed: IntProperty(
         name="Frames Processed",
         description="Total frames processed since start",
         default=0,
         min=0
     )
     
-    current_fps: FloatProperty = FloatProperty(  # type: ignore
+    current_fps: FloatProperty(
         name="Current FPS",
         description="Current frames per second",
         default=0.0,
@@ -244,7 +233,7 @@ class GestureRuntimeState(PropertyGroup):
         precision=1
     )
     
-    gestures_detected: IntProperty = IntProperty(  # type: ignore
+    gestures_detected: IntProperty(
         name="Gestures Detected",
         description="Total gestures detected since start",
         default=0,
@@ -256,27 +245,23 @@ class GestureRuntimeState(PropertyGroup):
 # Registration
 # ============================================================================
 
-classes: Tuple[type, ...] = (
+classes = (
     GestureAddonPreferences,
     GestureRuntimeState,
 )
 
 
-def register() -> None:
-    """Register property classes."""
+def register():
     for cls in classes:
         bpy.utils.register_class(cls)
-    
-    # Assign runtime state to Scene
     bpy.types.Scene.gesture_state = PointerProperty(type=GestureRuntimeState)
 
 
-def unregister() -> None:
-    """Unregister property classes."""
-    # Remove runtime state from Scene
+def unregister():
     if hasattr(bpy.types.Scene, 'gesture_state'):
         del bpy.types.Scene.gesture_state
-    
-    # Unregister classes in reverse order
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
+
+if __name__ == "__main__":
+    register()

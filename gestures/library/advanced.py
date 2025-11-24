@@ -100,9 +100,9 @@ class PointingGesture(AdvancedGesture):
         
         # 3. Calculate index finger straightness for confidence
         # More straight = higher confidence
-        index_tip = landmarks[HandLandmarkIndices.INDEX_FINGER_TIP]
-        index_mcp = landmarks[HandLandmarkIndices.INDEX_FINGER_MCP]
-        index_pip = landmarks[HandLandmarkIndices.INDEX_FINGER_PIP]
+        index_tip = landmarks.landmark[HandLandmarkIndices.INDEX_FINGER_TIP]
+        index_mcp = landmarks.landmark[HandLandmarkIndices.INDEX_FINGER_MCP]
+        index_pip = landmarks.landmark[HandLandmarkIndices.INDEX_FINGER_PIP]
         
         # Distance from tip to MCP should be larger than typical bent finger
         tip_to_mcp_dist = calculate_distance(index_tip, index_mcp)
@@ -155,11 +155,11 @@ class ThumbsUpGesture(AdvancedGesture):
             GestureResult if detected, None otherwise
         """
         wrist_idx = HandLandmarkIndices.WRIST
-        wrist = landmarks[wrist_idx]
+        wrist = landmarks.landmark[wrist_idx]
         
         # 1. Thumb must be extended
-        thumb_tip = landmarks[HandLandmarkIndices.THUMB_TIP]
-        thumb_mcp = landmarks[HandLandmarkIndices.THUMB_MCP]
+        thumb_tip = landmarks.landmark[HandLandmarkIndices.THUMB_TIP]
+        thumb_mcp = landmarks.landmark[HandLandmarkIndices.THUMB_MCP]
         
         dist_thumb_tip = calculate_distance_squared(thumb_tip, wrist)
         dist_thumb_mcp = calculate_distance_squared(thumb_mcp, wrist)

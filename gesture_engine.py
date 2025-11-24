@@ -1,30 +1,51 @@
 """
 Gesture Engine
 
-Main gesture detection and processing engine with Pydantic configuration.
+Main gesture detection and processing engine.
+Dependency-free version (removes Pydantic/External imports for portability).
 """
 
 import sys
 import os
-
-# Add project root to sys.path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.append(current_dir)
-
-from typing import Optional, Dict, Any, Tuple
 import time
 import bpy
-from bpy.types import Context
-from pydantic import BaseModel, Field
+from typing import Optional, Tuple, Any, Dict
+from dataclasses import dataclass
 
-from core.event_system import EventBus, Event, EventType
-from core.listener import EventListener, ListenerConfig
-import config
-from config import AddonConfig
+# ------------------------------------------------------------------------
+# 1. LIBRARY HANDLING
+# Safely handle external libraries that might not be in Blender
+# ------------------------------------------------------------------------
+try:
+    import cv2
+    OPENCV_AVAILABLE = True
+except ImportError:
+    OPENCV_AVAILABLE = False
 
+try:
+    import mediapipe as mp
+    MEDIAPIPE_AVAILABLE = True
+except ImportError:
+    MEDIAPIPE_AVAILABLE = False
 
-class EngineState(BaseModel):
+# Import Gesture Library
+# We use local imports to avoid circular dependencies if this file is imported early
+try:
+    from gestures.detector import GestureDetector
+    from gestures.library.basic import OpenPalmGesture, ClosedFistGesture
+    from gestures.library.advanced import PointingGesture, ThumbsUpGesture
+    from gestures.library.navigation import PinchGesture, VGesture
+    GESTURES_AVAILABLE = True
+except ImportError as e:
+    print(f"[Gesture Engine] Could not import gesture library: {e}")
+    GESTURES_AVAILABLE = False
+
+# ------------------------------------------------------------------------
+# 2. DATA STRUCTURES (Replaces Pydantic)
+# ------------------------------------------------------------------------
+
+@dataclass
+class EngineState:
     """Runtime state of the engine."""
     running: bool = False
     camera_ready: bool = False
@@ -32,275 +53,287 @@ class EngineState(BaseModel):
     last_frame_time: float = 0.0
     fps: float = 0.0
 
+# ------------------------------------------------------------------------
+# 3. CLASSES
+# ------------------------------------------------------------------------
+
+class CameraCapture:
+    """
+    Camera Capture Handler
+    """
+    def __init__(self, index=0, width=640, height=480):
+        self.index = index
+        self.width = width
+        self.height = height
+        self.cap = None
+        
+    def open(self) -> bool:
+        """Opens the camera and sets low-latency parameters."""
+        if not OPENCV_AVAILABLE:
+            print("[Camera] OpenCV not installed.")
+            return False
+            
+        try:
+            if sys.platform == 'win32':
+                self.cap = cv2.VideoCapture(self.index, cv2.CAP_DSHOW)
+            elif sys.platform == 'darwin':
+                self.cap = cv2.VideoCapture(self.index, cv2.CAP_AVFOUNDATION)
+            else:
+                self.cap = cv2.VideoCapture(self.index)
+                
+            if not self.cap.isOpened():
+                return False
+
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            return True
+        
+        except Exception as e:
+            print(f"[Camera] Error opening: {e}")
+            return False
+
+    def read_frame(self):
+        """Reads a frame. Returns (success, frame)."""
+        if self.cap and self.cap.isOpened():
+            return self.cap.read()
+        return False, None
+
+    def release(self):
+        """Releases hardware resources."""
+        if self.cap:
+            self.cap.release()
+            self.cap = None
 
 class GestureEngine:
     """
     Main gesture detection and processing engine.
-    
-    Manages camera capture, hand detection, gesture recognition,
-    and event publishing to handlers.
     """
     
-    def __init__(self, context: Context):
+    def __init__(self, context):
         self.context = context
         self.state = EngineState()
         
-        # Components (will be initialized in start())
-        self.camera: Optional[Any] = None
-        self.hands: Optional[Any] = None
-        self.detector: Optional[Any] = None
-        self.event_bus = EventBus()
-        self.listener: Optional[EventListener] = None
-        
-        # Handlers (will be registered with listener)
-        self.viewport_handler: Optional[Any] = None
-        self.animation_handler: Optional[Any] = None
-        
-        # Configuration
-        self.config: Optional[AddonConfig] = None
+        # Components
+        self.camera = None
+        self.hands = None
+        self.detector = None
         
         # FPS tracking
         self.frame_times = []
         self.max_frame_times = 30
-    
-    def _load_config(self) -> None:
-        """Load configuration from Blender preferences into Pydantic model."""
-        prefs = self.context.preferences.addons[__package__].preferences
         
-        # Create Pydantic config object from preferences
-        self.config = AddonConfig(
-            camera={
-                "index": prefs.camera_index,
-                "width": 640,
-                "height": 480,
-                "fps": 30
-            },
-            sensitivity={
-                "rotation": prefs.rotation_sensitivity,
-                "pan": prefs.pan_sensitivity
-            },
-            detection={
-                "frame_rate": prefs.frame_rate,
-                "min_confidence": prefs.min_confidence
-            },
-            display={
-                "show_preview": prefs.show_preview,
-                "show_debug": prefs.show_debug
-            },
-            gestures={
-                "enable_pinch": prefs.enable_pinch,
-                "enable_v_gesture": prefs.enable_v_gesture,
-                "enable_palm": prefs.enable_palm,
-                "enable_fist": prefs.enable_fist
-            }
-        )
+        # Cache package name for preferences lookup
+        self.package = __package__ if __package__ else __name__
     
+    def _get_prefs(self):
+        # Safely get preferences even in Text Editor mode
+        if self.package in self.context.preferences.addons:
+            return self.context.preferences.addons[self.package].preferences
+        return None
+
     def start(self) -> Tuple[bool, str]:
         """Start camera and gesture detection."""
+        
+        # 1. Check Dependencies
+        if not OPENCV_AVAILABLE:
+            return False, "OpenCV (cv2) not installed in Blender Python"
+        if not MEDIAPIPE_AVAILABLE:
+            return False, "MediaPipe not installed in Blender Python"
+        if not GESTURES_AVAILABLE:
+            return False, "Gesture Library not found"
+
         try:
-            # Load configuration
-            self._load_config()
+            prefs = self._get_prefs()
+            cam_idx = prefs.camera_index if prefs else 0
+            min_conf = prefs.min_confidence if prefs else 0.7
             
-            if self.config.display.show_debug:
-                print("[3DX Engine] Starting gesture engine...")
-            
-            # Initialize camera
-            from camera.capture import CameraCapture, CameraConfig
-            
-            camera_config = CameraConfig(**self.config.camera.dict())
-            self.camera = CameraCapture(camera_config)
-            
+            # 2. Initialize Camera
+            self.camera = CameraCapture(index=cam_idx)
             if not self.camera.open():
-                return False, "Failed to open camera"
+                return False, f"Could not open Camera {cam_idx}"
             
-            if self.config.display.show_debug:
-                print(f"[3DX Engine] Camera opened: {camera_config.index}")
-            
-            # Initialize MediaPipe Hands
-            import mediapipe as mp
-            
+            # 3. Initialize MediaPipe
             self.hands = mp.solutions.hands.Hands(
                 static_image_mode=False,
                 max_num_hands=1,
-                min_detection_confidence=self.config.detection.min_confidence,
-                min_tracking_confidence=self.config.detection.min_confidence
+                min_detection_confidence=min_conf,
+                min_tracking_confidence=min_conf
             )
             
-            if self.config.display.show_debug:
-                print("[3DX Engine] MediaPipe Hands initialized")
+            # 4. Initialize Detector
+            self.detector = GestureDetector(min_confidence=min_conf)
             
-            # Initialize gesture detector
-            from gestures.detector import GestureDetector
-            from gestures.library.basic import OpenPalmGesture, ClosedFistGesture
-            from gestures.library.navigation import PinchGesture, VGesture
+            # Register Gestures
+            self.detector.register(OpenPalmGesture())
+            self.detector.register(ClosedFistGesture())
+            self.detector.register(PinchGesture())
+            self.detector.register(VGesture())
+            self.detector.register(PointingGesture())
+            self.detector.register(ThumbsUpGesture())
             
-            self.detector = GestureDetector(min_confidence=self.config.detection.min_confidence)
-            
-            # Register enabled gestures
-            if self.config.gestures.enable_pinch:
-                self.detector.register(PinchGesture())
-            
-            if self.config.gestures.enable_v_gesture:
-                self.detector.register(VGesture())
-            
-            if self.config.gestures.enable_palm:
-                self.detector.register(OpenPalmGesture())
-            
-            if self.config.gestures.enable_fist:
-                self.detector.register(ClosedFistGesture())
-            
-            if self.config.display.show_debug:
-                print(f"[3DX Engine] Registered {len(self.detector.gestures)} gestures")
-            
-            # Initialize event listener
-            listener_config = ListenerConfig(
-                debug_mode=self.config.display.show_debug,
-                log_events=self.config.display.show_debug
-            )
-            self.listener = EventListener(self.context, self.event_bus, listener_config)
-            
-            # Initialize and register handlers
-            from handlers.viewport_handler import ViewportHandler
-            from handlers.animation_handler import AnimationHandler
-            from handlers.handler_base import HandlerConfig
-            
-            handler_config = HandlerConfig(enabled=True)
-            
-            self.viewport_handler = ViewportHandler(handler_config)
-            self.animation_handler = AnimationHandler(handler_config)
-            
-            self.listener.register_handler(self.viewport_handler)
-            self.listener.register_handler(self.animation_handler)
-            
-            # Start listener
-            self.listener.start()
-            
-            if self.config.display.show_debug:
-                print("[3DX Engine] Event listener started with handlers")
-            
-            # Mark as running
+            # 5. Update Internal State
             self.state.running = True
             self.state.camera_ready = True
             
-            return True, "Started successfully"
+            return True, "Engine started successfully"
             
         except Exception as e:
-            # Cleanup on error
             self.stop()
-            return False, f"Startup error: {str(e)}"
+            import traceback
+            traceback.print_exc()
+            return False, f"Startup Error: {str(e)}"
     
     def stop(self) -> None:
         """Stop and cleanup."""
-        if self.config and self.config.display.show_debug:
-            print("[3DX Engine] Stopping gesture engine...")
+        print("[Gesture Engine] Stopping...")
         
-        # Stop listener
-        if self.listener:
-            self.listener.stop()
-            self.listener = None
-        
-        # Release camera
         if self.camera:
             self.camera.release()
             self.camera = None
         
-        # Release MediaPipe
         if self.hands:
             self.hands.close()
             self.hands = None
-        
-        # Clear event bus
-        self.event_bus.clear_subscribers()
-        
-        # Reset state
+            
         self.state.running = False
         self.state.camera_ready = False
-        self.state.frame_count = 0
         self.frame_times.clear()
-        
-        if self.config and self.config.display.show_debug:
-            print("[3DX Engine] Stopped")
-    
-    def process_frame(self, context: Context) -> None:
+
+    def process_frame(self, context) -> None:
         """
-        Process one camera frame.
-        
-        Reads frame, detects hands, recognizes gestures, and publishes events.
+        Process one camera frame. Called by the Modal Operator.
         """
-        if not self.state.running:
+        if not self.state.running or not self.camera:
             return
         
         try:
-            # Track frame time for FPS
             frame_start = time.time()
             
-            # Read frame from camera
+            # 1. Capture
             ret, frame = self.camera.read_frame()
-            
             if not ret or frame is None:
                 return
             
-            # Convert BGR to RGB for MediaPipe
-            import cv2
+            # 2. Process (MediaPipe requires RGB)
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
-            # Process with MediaPipe
             results = self.hands.process(frame_rgb)
             
-            # Update state
-            state = context.scene.gesture_state
-            self.state.frame_count += 1
-            state.frames_processed = self.state.frame_count
-            
-            # Detect gestures if hands are found
-            if results.multi_hand_landmarks:
-                # Get first hand
-                hand_landmarks = results.multi_hand_landmarks[0]
+            # 3. Update Blender UI Data (Properties.py)
+            # We access the property group defined in Step 2
+            if hasattr(context.scene, "gesture_state"):
+                scene_props = context.scene.gesture_state
                 
-                # Detect gesture
-                gesture_result = self.detector.detect_best(hand_landmarks.landmark, {})
+                self.state.frame_count += 1
+                scene_props.frames_processed = self.state.frame_count
                 
-                if gesture_result:
-                    # Update UI state
-                    state.last_gesture = gesture_result.name
-                    state.last_confidence = gesture_result.confidence
-                    state.gestures_detected += 1
+                # 4. Handle Detections
+                if results.multi_hand_landmarks:
+                    landmarks = results.multi_hand_landmarks[0]
                     
-                    # Publish gesture event
-                    event = Event(
-                        type=EventType.GESTURE,
-                        source="gesture_engine",
-                        action=gesture_result.name,
-                        data=gesture_result.data
-                    )
-                    self.event_bus.publish(event)
+                    # Detect Gesture
+                    # We pass the previous frame's context if needed (not fully implemented here but prepared)
+                    detection_context = {} 
+                    result = self.detector.detect_best(landmarks, detection_context)
                     
-                    if self.config.display.show_debug:
-                        print(f"[3DX Engine] Detected: {gesture_result.name} "
-                              f"({gesture_result.confidence:.2f})")
-            
-            # Calculate FPS
+                    if result:
+                        scene_props.gestures_detected += 1
+                        scene_props.last_gesture = result.name
+                        scene_props.last_confidence = result.confidence
+                        
+                        # Execute Actions based on Gesture
+                        self._handle_gesture_action(context, result)
+                    else:
+                        scene_props.last_gesture = "None"
+                        scene_props.last_confidence = 0.0
+
+                    # Optional: Debug View (OpenCV Window)
+                    # Note: This causes issues on some Mac/Linux Blender builds.
+                    # Use with caution.
+                    prefs = self._get_prefs()
+                    if prefs and prefs.show_preview:
+                        # Draw landmarks
+                        mp.solutions.drawing_utils.draw_landmarks(
+                            frame, landmarks, mp.solutions.hands.HAND_CONNECTIONS)
+                        cv2.imshow("Gesture Preview", frame)
+                        cv2.waitKey(1)
+                else:
+                    scene_props.last_gesture = "No Hand"
+                    scene_props.last_confidence = 0.0
+
+            # 5. FPS Calculation
             frame_end = time.time()
-            frame_time = frame_end - frame_start
-            
-            self.frame_times.append(frame_time)
+            self.frame_times.append(frame_end - frame_start)
             if len(self.frame_times) > self.max_frame_times:
                 self.frame_times.pop(0)
             
             if self.frame_times:
-                avg_frame_time = sum(self.frame_times) / len(self.frame_times)
-                self.state.fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0.0
-                state.current_fps = self.state.fps
-            
+                avg = sum(self.frame_times) / len(self.frame_times)
+                fps = 1.0 / avg if avg > 0 else 0
+                self.state.fps = fps
+                if hasattr(context.scene, "gesture_state"):
+                    context.scene.gesture_state.current_fps = fps
+                
         except Exception as e:
-            print(f"[3DX Engine] Frame processing error: {e}")
-            
-            # Publish error event
-            error_event = Event(
-                type=EventType.ERROR,
-                source="gesture_engine",
-                action="processing_error",
-                data={"error": str(e)}
-            )
-            self.event_bus.publish(error_event)
+            print(f"[Gesture Engine] Error: {e}")
+            import traceback
+            traceback.print_exc()
 
+    def _handle_gesture_action(self, context, result):
+        """
+        Execute Blender operators based on detected gesture.
+        """
+        name = result.name
+        data = result.data
+        
+        # Helper to get 3D view context
+        def get_3d_view_context():
+            for area in context.screen.areas:
+                if area.type == 'VIEW_3D':
+                    for region in area.regions:
+                        if region.type == 'WINDOW':
+                            return {'area': area, 'region': region}
+            return None
+
+        try:
+            if name == "PINCH_DRAG": # Matches config.GESTURE_PINCH
+                # Rotate Viewport
+                # We need dx, dy from data
+                dx = data.get('dx', 0.0)
+                dy = data.get('dy', 0.0)
+                
+                if abs(dx) > 0.001 or abs(dy) > 0.001:
+                    view_ctx = get_3d_view_context()
+                    if view_ctx:
+                        # Sensitivity factor
+                        sens = 5.0
+                        with context.temp_override(**view_ctx):
+                            bpy.ops.view3d.view_orbit(angle=dx * sens, type='ORBITRIGHT')
+                            bpy.ops.view3d.view_orbit(angle=dy * sens, type='ORBITUP')
+
+            elif name == "V_GESTURE_MOVE": # Matches config.GESTURE_V_MOVE
+                # Pan Viewport
+                dx = data.get('dx', 0.0)
+                dy = data.get('dy', 0.0)
+                
+                if abs(dx) > 0.001 or abs(dy) > 0.001:
+                    view_ctx = get_3d_view_context()
+                    if view_ctx:
+                        # Sensitivity factor
+                        sens = 5.0
+                        with context.temp_override(**view_ctx):
+                            bpy.ops.view3d.view_pan(type='PANRIGHT', value=dx * sens)
+                            bpy.ops.view3d.view_pan(type='PANUP', value=-dy * sens) # Invert Y for natural feel
+
+            elif name == "OPEN_PALM": # Matches config.GESTURE_PALM
+                # Play Animation
+                if not context.screen.is_animation_playing:
+                    bpy.ops.screen.animation_play()
+
+            elif name == "CLOSED_FIST": # Matches config.GESTURE_FIST
+                # Stop Animation
+                if context.screen.is_animation_playing:
+                    bpy.ops.screen.animation_cancel()
+                    
+        except Exception as e:
+            print(f"[Gesture Action] Error executing {name}: {e}")
