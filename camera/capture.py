@@ -1,38 +1,41 @@
 """
 Camera Capture
 
-Wrapper for OpenCV camera capture with error handling and type safety.
+Wrapper for OpenCV camera capture with Pydantic configuration and error handling.
 """
 
-from typing import Optional, Tuple
-# import cv2  # Will be imported when dependencies are loaded
-# import numpy as np
-from numpy.typing import NDArray
+import sys
+import os
 
-from .. import config
+# Add project root to sys.path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root = os.path.abspath(os.path.join(current_dir, ".."))
+if root not in sys.path:
+    sys.path.append(root)
+
+from typing import Optional, Tuple, Any
+from pydantic import BaseModel, Field
+from numpy.typing import NDArray
+import cv2
+
+import config
+
+
+class CameraConfig(BaseModel):
+    """Configuration for camera capture."""
+    index: int = Field(0, ge=0)
+    width: int = Field(640, gt=0)
+    height: int = Field(480, gt=0)
+    fps: int = Field(30, gt=0)
 
 
 class CameraCapture:
     """
-    Wrapper for OpenCV camera capture with comprehensive error handling.
-    
-    #TODO: Implement complete camera management
-    Features to implement:
-    - Platform-specific camera initialization
-    - macOS camera permissions handling
-    - Frame reading with error recovery
-    - Camera warmup (skip first few frames)
-    - Resource cleanup
+    Wrapper for OpenCV camera capture.
     """
     
-    def __init__(self, camera_index: int = 0):
-        """
-        Initialize camera capture.
-        
-        Args:
-            camera_index: Camera device index (0 = default)
-        """
-        self.camera_index: int = camera_index
+    def __init__(self, config: CameraConfig):
+        self.config = config
         self.cap: Optional[Any] = None
         self.is_open: bool = False
         self.frame_count: int = 0
@@ -42,76 +45,47 @@ class CameraCapture:
         Open camera device.
         
         Returns:
-            bool: True if camera opened successfully
-            
-        #TODO: Implement camera opening
-        1. Import cv2
-        2. Create VideoCapture: self.cap = cv2.VideoCapture(self.camera_index)
-        3. Check if opened: if not self.cap.isOpened(): return False
-        4. Set camera properties:
-           - cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
-           - cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
-           - cap.set(cv2.CAP_PROP_FPS, config.CAMERA_FPS)
-        5. Test read one frame to validate
-        6. Skip first few frames (camera warmup)
-        7. Set self.is_open = True
-        8. Return True
-        
-        Error handling:
-        - Camera not found
-        - Permission denied (macOS)
-        - Camera in use
+            bool: True if camera opened successfully, False otherwise.
         """
-        # #TODO: Implement
-        # import cv2
-        # self.cap = cv2.VideoCapture(self.camera_index)
-        # ...
-        pass
-    
+        try:
+            self.cap = cv2.VideoCapture(self.config.index)
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.width)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.height)
+            self.cap.set(cv2.CAP_PROP_FPS, self.config.fps)
+            self.is_open = True
+            return True
+        except Exception as e:
+            print(f"Error opening camera: {e}")
+            return False
+
     def read_frame(self) -> Tuple[bool, Optional[NDArray]]:
         """
         Read one frame from camera.
         
         Returns:
-            Tuple[bool, Optional[NDArray]]: (success, frame)
-                - success: True if frame read successfully
-                - frame: NumPy array (H, W, 3) BGR format, or None
-                
-        #TODO: Implement frame reading
-        1. Check if camera is open
-        2. Call ret, frame = self.cap.read()
-        3. If ret is False, handle error
-        4. Increment frame_count
-        5. Return (ret, frame)
+            Tuple[bool, Optional[NDArray]]: Tuple of (success, frame).
         """
         if not self.is_open or not self.cap:
             return False, None
         
-        # #TODO: Implement
-        # ret, frame = self.cap.read()
-        # if ret:
-        #     self.frame_count += 1
-        # return ret, frame
+        # Read Frame, returns (success, frame)
+        ret, frame = self.cap.read()
+        if not ret:
+            return False, None
         
-        return False, None
+        self.frame_count += 1
+        return True, frame
     
     def release(self) -> None:
         """
         Release camera resources.
-        
-        #TODO: Implement cleanup
-        1. If self.cap: self.cap.release()
-        2. Set self.cap = None
-        3. Set self.is_open = False
-        4. Reset frame_count
         """
         if self.cap:
-            # self.cap.release()
+            self.cap.release()
             self.cap = None
         
         self.is_open = False
         self.frame_count = 0
     
     def __del__(self):
-        """Ensure camera is released on deletion."""
         self.release()

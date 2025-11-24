@@ -2,4 +2,5 @@
 Core System Initialization
 """
 
-__all__ = ['event_system', 'modality_manager']
+__all__ = ['event_system', 'modality_manager', 'listener']
+

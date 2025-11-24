@@ -4,6 +4,14 @@ Property Groups
 Addon preferences and runtime state properties with full type annotations.
 """
 
+import sys
+import os
+
+# Add project root to sys.path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
 from typing import Set, Tuple
 import bpy
 from bpy.props import (
@@ -12,7 +20,7 @@ from bpy.props import (
 )
 from bpy.types import AddonPreferences, PropertyGroup, Context
 
-from . import config
+import config
 
 
 class GestureAddonPreferences(AddonPreferences):
@@ -125,14 +133,6 @@ class GestureAddonPreferences(AddonPreferences):
     def draw(self, context: Context) -> None:
         """
         Draw preferences panel.
-        
-        #TODO: Implement preferences UI
-        Layout preferences in organized sections:
-        1. Camera settings
-        2. Sensitivity sliders
-        3. Gesture toggles
-        4. Advanced options
-        5. Dependency status
         """
         layout = self.layout
         

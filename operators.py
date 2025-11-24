@@ -4,6 +4,14 @@ Operators
 All gesture control operators with comprehensive type annotations.
 """
 
+import sys
+import os
+
+# Add project root to sys.path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
 from typing import Set, Optional, Dict, Any
 import bpy
 from bpy.types import Operator, Context, Event
@@ -29,13 +37,6 @@ class GESTURE_OT_Start(Operator):
             
         Returns:
             Set[str]: Operator return status
-            
-        #TODO: Implement start logic
-        1. Check if already running
-        2. Validate camera is available
-        3. Call GESTURE_OT_Run operator to start modal
-        4. Update UI state
-        5. Show success/error message
         """
         state = context.scene.gesture_state
         
@@ -65,12 +66,6 @@ class GESTURE_OT_Stop(Operator):
             
         Returns:
             Set[str]: Operator return status
-            
-        #TODO: Implement stop logic
-        1. Check if running
-        2. Set state.is_running = False (modal operator will cleanup)
-        3. Reset statistics
-        4. Show confirmation message
         """
         state = context.scene.gesture_state
         
@@ -137,14 +132,6 @@ class GESTURE_OT_Run(Operator):
             
         Returns:
             Set[str]: Modal operator status
-            
-        #TODO: Implement modal processing loop
-        1. Check for TIMER event
-        2. If state.is_running is False, cleanup and cancel
-        3. If state.is_paused, skip processing but continue
-        4. Process one frame with engine.process_frame()
-        5. Handle ESC key to stop
-        6. Return {'PASS_THROUGH'} to allow other operators
         """
         state = context.scene.gesture_state
         
@@ -156,9 +143,11 @@ class GESTURE_OT_Run(Operator):
         # Handle timer event
         if event.type == 'TIMER':
             if not state.is_paused and self._engine:
-                # #TODO: Process frame
-                # self._engine.process_frame(context)
-                pass
+                # Process one frame
+                try:
+                    self._engine.process_frame(context)
+                except Exception as e:
+                    print(f"[3DX] Frame processing error: {e}")
             return {'PASS_THROUGH'}
         
         # Allow ESC to stop
@@ -177,16 +166,6 @@ class GESTURE_OT_Run(Operator):
             
         Returns:
             Set[str]: Operator return status
-            
-        #TODO: Implement engine initialization
-        1. Import GestureEngine
-        2. Create engine instance with context
-        3. Call engine.start() - opens camera, initializes MediaPipe
-        4. If start fails, show error and cancel
-        5. Register modal handler
-        6. Register timer (interval from config)
-        7. Update state.is_running = True
-        8. Return {'RUNNING_MODAL'}
         """
         from . import gesture_engine
         
@@ -218,12 +197,6 @@ class GESTURE_OT_Run(Operator):
         
         Args:
             context: Blender context
-            
-        #TODO: Implement cleanup
-        1. Stop engine (releases camera, MediaPipe)
-        2. Remove timer
-        3. Update state
-        4. Clear statistics
         """
         # Stop engine
         if self._engine:
@@ -258,12 +231,6 @@ class GESTURE_OT_TestCamera(Operator):
             
         Returns:
             Set[str]: Operator return status
-            
-        #TODO: Implement camera test
-        1. Get camera_index from preferences
-        2. Call utils.validate_camera()
-        3. Show success or error message
-        4. Update UI with result
         """
         from . import utils
         
@@ -294,11 +261,6 @@ class GESTURE_OT_ResetSettings(Operator):
             
         Returns:
             Set[str]: Operator return status
-            
-        #TODO: Implement settings reset
-        1. Get preferences
-        2. Set each property to default from config.DEFAULT_SETTINGS
-        3. Show confirmation message
         """
         from . import config
         

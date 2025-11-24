@@ -4,6 +4,14 @@ UI Panels
 All UI panels for gesture control with type-safe layout code.
 """
 
+import sys
+import os
+
+# Add project root to sys.path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
 from typing import Optional
 import bpy
 from bpy.types import Panel, Context, UILayout
@@ -18,68 +26,117 @@ class VIEW3D_PT_GestureControl(Panel):
     
     def draw(self, context: Context) -> None:
         """
-        Draw main control panel.
+        Draw main control panel with enhanced visual feedback.
         
         Args:
             context: Blender context
-            
-        #TODO: Implement panel layout
-        Layout structure:
-        1. Status box (running/stopped, camera status)
-        2. Start/Stop/Pause buttons
-        3. Live statistics (FPS, last gesture, confidence)
-        4. Quick settings access
         """
         layout: UILayout = self.layout
         state = context.scene.gesture_state
         
-        # Status
+        # Enhanced Status Section
         box = layout.box()
+        col = box.column(align=True)
+        
+        # Status header with icon and color
         if state.is_running:
             if state.is_paused:
-                box.label(text="Status: PAUSED", icon='PAUSE')
+                col.label(text="PAUSED", icon='PAUSE')
+                row = col.row()
+                row.scale_y = 0.8
+                row.label(text="Gesture recognition is paused")
             else:
-                box.label(text="Status: ACTIVE", icon='PLAY')
+                col.label(text="ACTIVE", icon='PLAY')
+                row = col.row()
+                row.scale_y = 0.8
+                row.label(text="Detecting gestures...")
             
+            # Camera status
+            col.separator(factor=0.5)
             if state.camera_ready:
-                box.label(text="Camera: Ready", icon='CAMERA_DATA')
+                row = col.row()
+                row.label(text="Camera: Ready", icon='CHECKMARK')
             else:
-                box.label(text="Camera: Error", icon='ERROR')
+                row = col.row()
+                row.label(text="Camera: Error", icon='ERROR')
+                if state.camera_error:
+                    row = col.row()
+                    row.scale_y = 0.7
+                    row.label(text=state.camera_error)
         else:
-            box.label(text="Status: STOPPED", icon='SNAP_FACE')
+            col.label(text="STOPPED", icon='SNAP_FACE')
+            row = col.row()
+            row.scale_y = 0.8
+            row.label(text="Press Start to begin")
         
-        # Control buttons
-        row = layout.row()
+        layout.separator()
+        
+        # Control Buttons Section
+        box = layout.box()
         if not state.is_running:
-            row.scale_y = 1.5
-            row.operator("gesture.start", icon='PLAY', text="Start")
+            # Big start button when not running
+            row = box.row()
+            row.scale_y = 2.0
+            row.operator("gesture.start", icon='PLAY', text="Start Gesture Control")
         else:
-            col = row.column()
-            col.operator("gesture.stop", icon='SNAP_FACE', text="Stop")
-            col = row.column()
+            # Control buttons when running
+            col = box.column(align=True)
+            row = col.row(align=True)
+            row.scale_y = 1.5
+            
+            # Stop button
+            stop_btn = row.operator("gesture.stop", icon='SNAP_FACE', text="Stop")
+            
+            # Pause/Resume button
             if state.is_paused:
-                col.operator("gesture.toggle_pause", icon='PLAY', text="Resume")
+                pause_btn = row.operator("gesture.toggle_pause", icon='PLAY', text="Resume")
             else:
-                col.operator("gesture.toggle_pause", icon='PAUSE', text="Pause")
+                pause_btn = row.operator("gesture.toggle_pause", icon='PAUSE', text="Pause")
         
-        # Statistics (when running)
+        # Live Statistics (when running)
         if state.is_running:
             layout.separator()
             box = layout.box()
-            box.label(text="Statistics", icon='INFO')
+            col = box.column(align=True)
             
-            row = box.row()
-            row.label(text=f"FPS: {state.current_fps:.1f}")
+            # Header
+            row = col.row()
+            row.label(text="Live Statistics", icon='INFO')
             
-            row = box.row()
-            row.label(text=f"Last: {state.last_gesture}")
+            col.separator(factor=0.5)
+            
+            # Statistics grid
+            split = col.split(factor=0.4, align=True)
+            split.label(text="FPS:")
+            split.label(text=f"{state.current_fps:.1f}")
+            
+            split = col.split(factor=0.4, align=True)
+            split.label(text="Frames:")
+            split.label(text=f"{state.frames_processed}")
             
             if state.last_gesture != "None":
-                row = box.row()
-                row.label(text=f"Conf: {state.last_confidence:.2f}")
+                col.separator(factor=0.5)
+                split = col.split(factor=0.4, align=True)
+                split.label(text="Last Gesture:")
+                split.label(text=state.last_gesture, icon='HAND')
+                
+                split = col.split(factor=0.4, align=True)
+                split.label(text="Confidence:")
+                # Color-coded confidence
+                row = split.row()
+                if state.last_confidence >= 0.8:
+                    row.label(text=f"{state.last_confidence:.0%}", icon='CHECKMARK')
+                elif state.last_confidence >= 0.6:
+                    row.label(text=f"{state.last_confidence:.0%}", icon='DOT')
+                else:
+                    row.label(text=f"{state.last_confidence:.0%}", icon='ERROR')
             
-            row = box.row()
-            row.label(text=f"Frames: {state.frames_processed}")
+            if state.gestures_detected > 0:
+                col.separator(factor=0.5)
+                split = col.split(factor=0.4, align=True)
+                split.label(text="Detected:")
+                split.label(text=f"{state.gestures_detected} total")
+
 
 
 class VIEW3D_PT_GestureSettings(Panel):
@@ -93,7 +150,7 @@ class VIEW3D_PT_GestureSettings(Panel):
     
     def draw(self, context: Context) -> None:
         """
-        Draw settings panel.
+        Draw settings panel with improved organization.
         
         Args:
             context: Blender context
@@ -101,35 +158,77 @@ class VIEW3D_PT_GestureSettings(Panel):
         layout: UILayout = self.layout
         prefs = context.preferences.addons[__package__].preferences
         
-        # Camera
+        # Camera Settings
         box = layout.box()
-        box.label(text="Camera", icon='CAMERA_DATA')
-        box.prop(prefs, "camera_index")
-        box.operator("gesture.test_camera", icon='CAMERA_DATA')
+        col = box.column(align=True)
+        row = col.row()
+        row.label(text="Camera", icon='CAMERA_DATA')
         
-        # Sensitivity
-        box = layout.box()
-        box.label(text="Sensitivity", icon='DRIVER')
-        box.prop(prefs, "rotation_sensitivity", slider=True)
-        box.prop(prefs, "pan_sensitivity", slider=True)
+        col.separator(factor=0.3)
+        col.prop(prefs, "camera_index")
         
-        # Gestures
-        box = layout.box()
-        box.label(text="Enable Gestures", icon='HAND')
-        box.prop(prefs, "enable_pinch")
-        box.prop(prefs, "enable_v_gesture")
-        box.prop(prefs, "enable_palm")
-        box.prop(prefs, "enable_fist")
+        row = col.row()
+        row.scale_y = 1.2
+        row.operator("gesture.test_camera", icon='PLAY', text="Test Camera")
         
-        # Display
+        layout.separator()
+        
+        # Sensitivity Settings
         box = layout.box()
-        box.label(text="Display", icon='WINDOW')
-        box.prop(prefs, "show_preview")
-        box.prop(prefs, "show_debug")
+        col = box.column(align=True)
+        row = col.row()
+        row.label(text="Sensitivity", icon='DRIVER')
+        
+        col.separator(factor=0.3)
+        col.prop(prefs, "rotation_sensitivity", slider=True)
+        col.prop(prefs, "pan_sensitivity", slider=True)
+        
+        layout.separator()
+        
+        # Gesture Toggles
+        box = layout.box()
+        col = box.column(align=True)
+        row = col.row()
+        row.label(text="Enable Gestures", icon='HAND')
+        
+        col.separator(factor=0.3)
+        
+        # Use split for better alignment
+        split = col.split(factor=0.7, align=True)
+        split.prop(prefs, "enable_pinch", text="Pinch (Rotate)")
+        split.label(text="🤏", icon='NONE')
+        
+        split = col.split(factor=0.7, align=True)
+        split.prop(prefs, "enable_v_gesture", text="V-Gesture (Pan)")
+        split.label(text="✌️", icon='NONE')
+        
+        split = col.split(factor=0.7, align=True)
+        split.prop(prefs, "enable_palm", text="Palm (Play)")
+        split.label(text="🖐️", icon='NONE')
+        
+        split = col.split(factor=0.7, align=True)
+        split.prop(prefs, "enable_fist", text="Fist (Stop)")
+        split.label(text="✊", icon='NONE')
+        
+        layout.separator()
+        
+        # Display Options
+        box = layout.box()
+        col = box.column(align=True)
+        row = col.row()
+        row.label(text="Display", icon='WINDOW')
+        
+        col.separator(factor=0.3)
+        col.prop(prefs, "show_preview")
+        col.prop(prefs, "show_debug")
+        
+        layout.separator()
         
         # Actions
-        layout.separator()
-        layout.operator("gesture.reset_settings", icon='LOOP_BACK')
+        row = layout.row()
+        row.scale_y = 1.3
+        row.operator("gesture.reset_settings", icon='LOOP_BACK', text="Reset to Defaults")
+
 
 
 class VIEW3D_PT_GestureHelp(Panel):

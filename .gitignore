@@ -14,11 +14,6 @@ build/
 dist/
 *.zip
 
-# Dependencies (will be bundled later)
-libs/*
-libs/.gitkeep
-libs/README.md
-
 # IDE
 .vscode/
 .idea/
@@ -32,6 +27,7 @@ Thumbs.db
 # Testing
 .pytest_cache/
 tests/__pycache__/
+tests
 
 # Old structure (to be removed)
 OLD_REFERENCE/*

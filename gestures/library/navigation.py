@@ -1,246 +1,284 @@
 """
-Navigation Hand Gestures
+Navigation Gestures
 
-Strict, high-confidence gestures for navigation and control.
+Implementation of navigation gestures (Pinch, V-Gesture) with Pydantic validation.
 """
 
-import mediapipe as mp
-import numpy as np
+import sys
+import os
+
+# Add project root to sys.path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root = os.path.abspath(os.path.join(current_dir, "../../.."))
+if root not in sys.path:
+    sys.path.append(root)
+
 from typing import Dict, Any, Optional
-from ..detector import Gesture, GestureResult
-from ..registry import register
+from pydantic import BaseModel
+import mediapipe as mp
 
-mp_holistic = mp.solutions.holistic
-
-
-def get_extended_fingers(landmarks) -> list:
-    """
-    Determine which fingers are extended based on hand landmarks.
-    
-    Checks if each finger (Index, Middle, Ring, Pinky) is extended by
-    comparing the distance from wrist to fingertip vs wrist to PIP joint.
-    A finger is considered extended if the tip is significantly further
-    from the wrist than the PIP joint (1.2x multiplier).
-    
-    This method is more reliable than simple Y-coordinate comparison as it
-    accounts for hand rotation and orientation.
-    
-    Args:
-        landmarks: MediaPipe hand landmarks
-    
-    Returns:
-        List of 4 booleans [Index, Middle, Ring, Pinky] indicating
-        which fingers are extended (True) or closed (False)
-    
-    Example:
-        [True, True, False, False] = V-gesture (index + middle extended)
-        [True, True, True, True] = Open palm (all extended)
-        [False, False, False, False] = Closed fist (all closed)
-    """
-    fingers = [
-        mp_holistic.HandLandmark.INDEX_FINGER_TIP,
-        mp_holistic.HandLandmark.MIDDLE_FINGER_TIP,
-        mp_holistic.HandLandmark.RING_FINGER_TIP,
-        mp_holistic.HandLandmark.PINKY_TIP
-    ]
-    
-    fingers_pip = [
-        mp_holistic.HandLandmark.INDEX_FINGER_PIP,
-        mp_holistic.HandLandmark.MIDDLE_FINGER_PIP,
-        mp_holistic.HandLandmark.RING_FINGER_PIP,
-        mp_holistic.HandLandmark.PINKY_PIP
-    ]
-    
-    extended = []
-    for tip, pip in zip(fingers, fingers_pip):
-        # Calculate distance from wrist to tip and wrist to PIP
-        wrist = landmarks.landmark[mp_holistic.HandLandmark.WRIST]
-        tip_dist = np.sqrt((landmarks.landmark[tip].x - wrist.x)**2 + (landmarks.landmark[tip].y - wrist.y)**2)
-        pip_dist = np.sqrt((landmarks.landmark[pip].x - wrist.x)**2 + (landmarks.landmark[pip].y - wrist.y)**2)
-        
-        # Tip must be significantly further (1.2x) to be considered extended
-        extended.append(tip_dist > pip_dist * 1.2)
-    
-    return extended
+from gestures.detector import Gesture, GestureResult
+from gestures.landmarks import (
+    HandLandmarkIndices,
+    calculate_distance,
+    calculate_distance_squared,
+    is_finger_extended,
+    is_finger_curled
+)
+import config
 
 
-@register("navigation")
-class VGesture(Gesture):
-    """
-    V-gesture with index and middle fingers for navigation movement.
+
+class NavigationGesture(Gesture):
+    """Base class for navigation gestures."""
     
-    This gesture is used for viewport panning/navigation in 3D space.
-    The user extends their index and middle fingers in a V-shape while
-    keeping the ring and pinky fingers closed.
-    
-    Detection Criteria:
-    - Index finger extended (tip further from wrist than PIP joint)
-    - Middle finger extended (tip further from wrist than PIP joint)
-    - Ring finger closed (tip close to wrist, < 0.18 distance)
-    - Pinky finger closed (tip close to wrist, < 0.18 distance)
-    
-    Position Tracking:
-    - Tracks the midpoint between index and middle fingertips
-    - Used for calculating movement deltas in navigation
-    
-    Sensitivity Improvements:
-    - Lowered closed finger threshold from 0.2 to 0.18 for better detection
-    - More forgiving detection for small hand movements
-    """
+    def __init__(self, name: str):
+        self._name = name
+        self.last_position: Optional[Dict[str, float]] = None
     
     @property
     def name(self) -> str:
-        return "V_GESTURE"
+        return self._name
     
-    @property
-    def priority(self) -> int:
-        # Priority 10 - standard priority for navigation gestures
-        return 10
-    
-    def detect(self, landmarks, context: Dict[str, Any]) -> Optional[GestureResult]:
+    def detect(self, landmarks: Any, context: Dict[str, Any]) -> Optional[GestureResult]:
         """
-        Detect V-gesture from hand landmarks.
+        Detect navigation gesture.
+        
+        This method should be overridden by subclasses.
+        """
+        return None
+
+
+class PinchGesture(NavigationGesture):
+    """
+    Pinch gesture for viewport rotation.
+    
+    Detects when thumb and index finger are pinched together,
+    and tracks movement for rotation control.
+    """
+    
+    def __init__(self):
+        super().__init__(config.GESTURE_PINCH)
+        self.pinch_threshold = 0.05  # Distance threshold for pinch detection
+    
+    def detect(self, landmarks: Any, context: Dict[str, Any]) -> Optional[GestureResult]:
+        """
+        Detect pinch gesture and calculate movement delta.
+        
+        Criteria:
+        - Thumb tip and index tip must be close together (within threshold)
+        - Other fingers should be curled or at least not interfering
+        - Movement is tracked when pinch is maintained
         
         Args:
             landmarks: MediaPipe hand landmarks
-            context: Additional context (not used currently)
-        
+            context: Context dictionary with previous frame data
+            
         Returns:
-            GestureResult with V-center position if detected, None otherwise
+            GestureResult with dx, dy data if pinching, None otherwise
         """
-        # Check finger extension state
-        extended = get_extended_fingers(landmarks)
+        # Get thumb and index finger tips
+        thumb_tip = landmarks[HandLandmarkIndices.THUMB_TIP]
+        index_tip = landmarks[HandLandmarkIndices.INDEX_FINGER_TIP]
         
-        # Require: Index and Middle extended, Ring and Pinky closed
-        if extended != [True, True, False, False]:
+        # Calculate 3D distance between thumb and index
+        distance_3d = calculate_distance(thumb_tip, index_tip)
+        
+        # Also check 2D distance (x, y only) for better robustness
+        # Sometimes z-depth can be noisy
+        dx_2d = thumb_tip.x - index_tip.x
+        dy_2d = thumb_tip.y - index_tip.y
+        distance_2d = (dx_2d * dx_2d + dy_2d * dy_2d) ** 0.5
+        
+        # Check if pinched - use 3D distance primarily, 2D as backup
+        is_pinched = distance_3d < self.pinch_threshold or distance_2d < (self.pinch_threshold * 0.8)
+        
+        if not is_pinched:
+            self.last_position = None
             return None
         
-        # Verify ring and pinky are actually closed (not just less extended)
-        wrist = landmarks.landmark[mp_holistic.HandLandmark.WRIST]
-        ring_tip = landmarks.landmark[mp_holistic.HandLandmark.RING_FINGER_TIP]
-        pinky_tip = landmarks.landmark[mp_holistic.HandLandmark.PINKY_TIP]
+        # Additional check: middle finger should not be too close (avoid confusion with other gestures)
+        middle_tip = landmarks[HandLandmarkIndices.MIDDLE_FINGER_TIP]
+        middle_to_thumb = calculate_distance(middle_tip, thumb_tip)
         
-        # Lowered threshold from 0.2 to 0.18 for better small movement detection
-        # This makes the gesture more forgiving and easier to maintain
-        ring_dist = np.sqrt((ring_tip.x - wrist.x)**2 + (ring_tip.y - wrist.y)**2)
-        pinky_dist = np.sqrt((pinky_tip.x - wrist.x)**2 + (pinky_tip.y - wrist.y)**2)
-        
-        if ring_dist > 0.18:  # More forgiving threshold
-            return None
-        if pinky_dist > 0.18:  # More forgiving threshold
+        # If middle finger is also very close to thumb, this might be a different gesture
+        if middle_to_thumb < self.pinch_threshold * 0.9:
+            self.last_position = None
             return None
         
-        # Calculate V center position (midpoint between index and middle tips)
-        # This position is used to track hand movement for navigation
-        index_tip = landmarks.landmark[mp_holistic.HandLandmark.INDEX_FINGER_TIP]
-        middle_tip = landmarks.landmark[mp_holistic.HandLandmark.MIDDLE_FINGER_TIP]
+        # Calculate center of pinch
+        center_x = (thumb_tip.x + index_tip.x) / 2
+        center_y = (thumb_tip.y + index_tip.y) / 2
         
-        v_center = {
-            'x': (index_tip.x + middle_tip.x) / 2,
-            'y': (index_tip.y + middle_tip.y) / 2
-        }
+        # Calculate movement delta
+        dx, dy = 0.0, 0.0
+        if self.last_position is not None:
+            dx = center_x - self.last_position['x']
+            dy = center_y - self.last_position['y']
+            
+            # Add noise filtering: ignore very small movements (jitter)
+            movement_magnitude = (dx * dx + dy * dy) ** 0.5
+            if movement_magnitude < 0.002:  # Threshold for noise
+                dx, dy = 0.0, 0.0
         
-        # Return with high confidence (0.9) and position data
+        # Update last position
+        self.last_position = {'x': center_x, 'y': center_y}
+        
+        # Calculate confidence based on pinch tightness
+        # Tighter pinch = higher confidence
+        # Use normalized distance: pinch_threshold is max, 0 is perfect
+        tightness = 1.0 - (distance_3d / self.pinch_threshold)
+        confidence = max(0.6, min(1.0, 0.7 + tightness * 0.3))
+        
         return GestureResult(
             name=self.name,
-            confidence=0.9,
-            data={'position': v_center}
+            confidence=confidence,
+            data={
+                'dx': dx,
+                'dy': dy,
+                'pinch_distance': distance_3d,
+                'pinch_distance_2d': distance_2d,
+                'center_x': center_x,
+                'center_y': center_y,
+                'tightness': tightness
+            }
         )
 
 
 
-@register("navigation")
-class OpenPalm(Gesture):
-    """Strict Open Palm (Play)."""
+class VGesture(NavigationGesture):
+    """
+    V-Gesture (peace sign) for viewport panning.
     
-    @property
-    def name(self) -> str:
-        return "OPEN_PALM"
+    Detects when index and middle fingers are extended in a V shape,
+    and tracks their movement for camera panning.
+    """
     
-    @property
-    def priority(self) -> int:
-        return 10
+    def __init__(self):
+        super().__init__(config.GESTURE_V_MOVE)
     
-    def detect(self, landmarks, context: Dict[str, Any]) -> Optional[GestureResult]:
-        extended = get_extended_fingers(landmarks)
-        # All 4 fingers extended + Thumb extended check
-        if not all(extended):
-            return None
+    def detect(self, landmarks: Any, context: Dict[str, Any]) -> Optional[GestureResult]:
+        """
+        Detect V-gesture and calculate movement delta.
+        
+        Criteria:
+        - Index and middle fingers must be extended
+        - Ring and pinky fingers must be curled
+        - Thumb should be curled or neutral (not extended like palm)
+        - Fingers should have decent separation (V shape)
+        
+        Args:
+            landmarks: MediaPipe hand landmarks
+            context: Context dictionary
             
-        # Check thumb extension
-        thumb_tip = landmarks.landmark[mp_holistic.HandLandmark.THUMB_TIP]
-        thumb_ip = landmarks.landmark[mp_holistic.HandLandmark.THUMB_IP]
-        wrist = landmarks.landmark[mp_holistic.HandLandmark.WRIST]
+        Returns:
+            GestureResult with dx, dy data if V-gesture detected, None otherwise
+        """
+        wrist_idx = HandLandmarkIndices.WRIST
         
-        thumb_dist = np.sqrt((thumb_tip.x - wrist.x)**2 + (thumb_tip.y - wrist.y)**2)
-        thumb_ip_dist = np.sqrt((thumb_ip.x - wrist.x)**2 + (thumb_ip.y - wrist.y)**2)
-        
-        if thumb_dist > thumb_ip_dist * 1.1:
-            # Check spread
-            pinky_tip = landmarks.landmark[mp_holistic.HandLandmark.PINKY_TIP]
-            index_tip = landmarks.landmark[mp_holistic.HandLandmark.INDEX_FINGER_TIP]
-            spread = np.sqrt((index_tip.x - pinky_tip.x)**2 + (index_tip.y - pinky_tip.y)**2)
-            
-            if spread > 0.15: # Strict spread
-                return GestureResult(name=self.name, confidence=1.0)
-        
-        return None
-
-
-@register("navigation")
-class ClosedFist(Gesture):
-    """Strict Closed Fist (Stop)."""
-    
-    @property
-    def name(self) -> str:
-        return "CLOSED_FIST"
-    
-    @property
-    def priority(self) -> int:
-        return 10
-    
-    def detect(self, landmarks, context: Dict[str, Any]) -> Optional[GestureResult]:
-        extended = get_extended_fingers(landmarks)
-        # All 4 fingers NOT extended
-        if any(extended):
-            return None
-            
-        # Check compactness
-        wrist = landmarks.landmark[mp_holistic.HandLandmark.WRIST]
-        middle_tip = landmarks.landmark[mp_holistic.HandLandmark.MIDDLE_FINGER_TIP]
-        
-        dist = np.sqrt((middle_tip.x - wrist.x)**2 + (middle_tip.y - wrist.y)**2)
-        
-        if dist < 0.15: # Strict compactness
-            return GestureResult(name=self.name, confidence=1.0)
-            
-        return None
-
-
-@register("navigation")
-class Pinch(Gesture):
-    """Strict Pinch."""
-    
-    @property
-    def name(self) -> str:
-        return "PINCH"
-    
-    @property
-    def priority(self) -> int:
-        return 15 # Higher than others
-    
-    def detect(self, landmarks, context: Dict[str, Any]) -> Optional[GestureResult]:
-        thumb_tip = landmarks.landmark[mp_holistic.HandLandmark.THUMB_TIP]
-        index_tip = landmarks.landmark[mp_holistic.HandLandmark.INDEX_FINGER_TIP]
-        
-        distance = np.sqrt(
-            (thumb_tip.x - index_tip.x) ** 2 +
-            (thumb_tip.y - index_tip.y) ** 2 +
-            (thumb_tip.z - index_tip.z) ** 2
+        # 1. Check if index and middle fingers are extended
+        index_extended = is_finger_extended(
+            landmarks, 
+            HandLandmarkIndices.INDEX_FINGER_TIP, 
+            HandLandmarkIndices.INDEX_FINGER_PIP, 
+            wrist_idx
+        )
+        middle_extended = is_finger_extended(
+            landmarks, 
+            HandLandmarkIndices.MIDDLE_FINGER_TIP, 
+            HandLandmarkIndices.MIDDLE_FINGER_PIP, 
+            wrist_idx
         )
         
-        if distance < 0.06: # Relaxed threshold for easier pinch detection
-            confidence = max(0.7, 1.0 - (distance / 0.06)) # Scale confidence based on distance
-            return GestureResult(name=self.name, confidence=confidence, data={'position': {'x': (thumb_tip.x+index_tip.x)/2, 'y': (thumb_tip.y+index_tip.y)/2}})
+        if not (index_extended and middle_extended):
+            self.last_position = None
+            return None
+        
+        # 2. Check if ring and pinky are curled
+        ring_curled = is_finger_curled(
+            landmarks, 
+            HandLandmarkIndices.RING_FINGER_TIP, 
+            HandLandmarkIndices.RING_FINGER_PIP, 
+            wrist_idx
+        )
+        pinky_curled = is_finger_curled(
+            landmarks, 
+            HandLandmarkIndices.PINKY_TIP, 
+            HandLandmarkIndices.PINKY_PIP, 
+            wrist_idx
+        )
+        
+        # V-gesture requires ring and pinky to be curled
+        if not (ring_curled and pinky_curled):
+            self.last_position = None
+            return None
+        
+        # 3. Check thumb: should not be extended like in palm gesture
+        # Thumb should be either curled or in neutral position
+        thumb_tip = landmarks[HandLandmarkIndices.THUMB_TIP]
+        thumb_mcp = landmarks[HandLandmarkIndices.THUMB_MCP]
+        wrist = landmarks[wrist_idx]
+        
+        dist_thumb_tip = calculate_distance_squared(thumb_tip, wrist)
+        dist_thumb_mcp = calculate_distance_squared(thumb_mcp, wrist)
+        
+        # If thumb is strongly extended (much farther than MCP), this might be palm
+        # Allow some extension but not as much as a palm
+        thumb_extension_ratio = dist_thumb_tip / (dist_thumb_mcp + 0.001)  # Avoid division by zero
+        if thumb_extension_ratio > 2.0:  # Thumb is too extended
+            self.last_position = None
+            return None
+        
+        # 4. Calculate center point between index and middle fingertips
+        index_tip = landmarks[HandLandmarkIndices.INDEX_FINGER_TIP]
+        middle_tip = landmarks[HandLandmarkIndices.MIDDLE_FINGER_TIP]
+        
+        center_x = (index_tip.x + middle_tip.x) / 2
+        center_y = (index_tip.y + middle_tip.y) / 2
+        
+        # 5. Calculate movement delta
+        dx, dy = 0.0, 0.0
+        if self.last_position is not None:
+            dx = center_x - self.last_position['x']
+            dy = center_y - self.last_position['y']
             
-        return None
+            # Add noise filtering: ignore very small movements (jitter)
+            movement_magnitude = (dx * dx + dy * dy) ** 0.5
+            if movement_magnitude < 0.002:  # Threshold for noise
+                dx, dy = 0.0, 0.0
+        
+        # Update last position
+        self.last_position = {'x': center_x, 'y': center_y}
+        
+        # 6. Calculate finger spread for confidence scoring
+        finger_spread = calculate_distance(index_tip, middle_tip)
+        
+        # V-gesture should have good separation between fingers
+        # Typical V spread: 0.05-0.15
+        # Too close together: might be pointing gesture
+        # Too far: might be transitioning to palm
+        if finger_spread < 0.03:
+            # Fingers too close - might be a different gesture
+            confidence = 0.6
+        elif finger_spread > 0.15:
+            # Fingers too spread - might be transitioning
+            confidence = 0.7
+        else:
+            # Good V shape
+            # Normalize: 0.03-0.15 maps to 0.8-1.0 confidence
+            spread_score = (finger_spread - 0.03) / 0.12
+            confidence = 0.8 + (spread_score * 0.2)
+        
+        return GestureResult(
+            name=self.name,
+            confidence=min(1.0, max(0.6, confidence)),
+            data={
+                'dx': dx,
+                'dy': dy,
+                'center_x': center_x,
+                'center_y': center_y,
+                'finger_spread': finger_spread,
+                'thumb_extension_ratio': thumb_extension_ratio
+            }
+        )
+

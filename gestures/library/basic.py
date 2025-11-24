@@ -1,290 +1,216 @@
 """
-Basic Hand Gestures
+Basic Gestures
 
-Simple, single-hand gestures for common actions.
+Implementation of basic gestures (Palm, Fist) with Pydantic validation.
 """
 
-import mediapipe as mp
-import numpy as np
+import sys
+import os
+
+# Add project root to sys.path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root = os.path.abspath(os.path.join(current_dir, "../../.."))
+if root not in sys.path:
+    sys.path.append(root)
+
 from typing import Dict, Any, Optional
-from ..detector import Gesture, GestureResult
-from ..registry import register
+import mediapipe as mp
 
-mp_holistic = mp.solutions.holistic
+from gestures.detector import Gesture, GestureResult
+from gestures.landmarks import (
+    HandLandmarkIndices,
+    FINGER_TIPS, 
+    calculate_distance_squared,
+    is_finger_extended,
+    is_finger_curled,
+    get_finger_spread
+)
+import config
 
 
-def count_extended_fingers(landmarks) -> int:
-    """Count number of extended fingers (excluding thumb)."""
-    fingers = [
-        mp_holistic.HandLandmark.INDEX_FINGER_TIP,
-        mp_holistic.HandLandmark.MIDDLE_FINGER_TIP,
-        mp_holistic.HandLandmark.RING_FINGER_TIP,
-        mp_holistic.HandLandmark.PINKY_TIP
-    ]
+
+class BasicGesture(Gesture):
+    """
+    Base class for basic static gestures.
+    """
     
-    fingers_pip = [
-        mp_holistic.HandLandmark.INDEX_FINGER_PIP,
-        mp_holistic.HandLandmark.MIDDLE_FINGER_PIP,
-        mp_holistic.HandLandmark.RING_FINGER_PIP,
-        mp_holistic.HandLandmark.PINKY_PIP
-    ]
-    
-    extended = 0
-    for tip, pip in zip(fingers, fingers_pip):
-        if landmarks.landmark[tip].y < landmarks.landmark[pip].y:
-            extended += 1
-    
-    return extended
-
-
-@register("basic")
-class OpenPalm(Gesture):
-    """All four fingers extended (palm open)."""
+    def __init__(self, name: str):
+        self._name = name
     
     @property
     def name(self) -> str:
-        return "OPEN_PALM"
+        return self._name
     
-    @property
-    def priority(self) -> int:
-        return 5
-    
-    @property
-    def description(self) -> str:
-        return "Open palm with all fingers extended"
-    
-    def detect(self, landmarks, context: Dict[str, Any]) -> Optional[GestureResult]:
-        extended = count_extended_fingers(landmarks)
+    def detect(self, landmarks: Any, context: Dict[str, Any]) -> Optional[GestureResult]:
+        """
+        Method to be implemented by subclasses.
+        """
+        raise NotImplementedError
+
+class OpenPalmGesture(BasicGesture):
+    """
+    Open Palm Gesture.
+    """
+    def __init__(self):
+        super().__init__(config.GESTURE_PALM)
+
+    def detect(self, landmarks: Any, context: Dict[str, Any]) -> Optional[GestureResult]:
+        """
+        Detect open palm gesture.
         
-        if extended == 4:
-            # Check fingers are spread (not closed)
-            index_tip = landmarks.landmark[mp_holistic.HandLandmark.INDEX_FINGER_TIP]
-            pinky_tip = landmarks.landmark[mp_holistic.HandLandmark.PINKY_TIP]
-            spread = abs(index_tip.x - pinky_tip.x)
-            
-            confidence = min(1.0, spread * 5)  # More spread = higher confidence
-            
-            return GestureResult(
-                name=self.name,
-                confidence=confidence,
-                data={'extended_fingers': extended, 'spread': spread}
-            )
+        Criteria:
+        - All 5 fingers must be extended
+        - Fingers should be spread apart (higher confidence)
         
-        return None
+        Args:
+            landmarks: MediaPipe landmarks
+            context: Context dictionary
+            
+        Returns:
+            GestureResult if detected, None otherwise
+        """
+        wrist_idx = HandLandmarkIndices.WRIST
+        
+        # 1. Check if all fingers are extended
+        finger_checks = [
+            (HandLandmarkIndices.INDEX_FINGER_TIP, HandLandmarkIndices.INDEX_FINGER_PIP),
+            (HandLandmarkIndices.MIDDLE_FINGER_TIP, HandLandmarkIndices.MIDDLE_FINGER_PIP),
+            (HandLandmarkIndices.RING_FINGER_TIP, HandLandmarkIndices.RING_FINGER_PIP),
+            (HandLandmarkIndices.PINKY_TIP, HandLandmarkIndices.PINKY_PIP),
+        ]
+        
+        extended_count = 0
+        for tip_idx, pip_idx in finger_checks:
+            if is_finger_extended(landmarks, tip_idx, pip_idx, wrist_idx):
+                extended_count += 1
+        
+        # 2. Check thumb separately (different joint structure)
+        thumb_tip = landmarks[HandLandmarkIndices.THUMB_TIP]
+        thumb_mcp = landmarks[HandLandmarkIndices.THUMB_MCP]
+        wrist = landmarks[wrist_idx]
+        
+        dist_thumb_tip = calculate_distance_squared(thumb_tip, wrist)
+        dist_thumb_mcp = calculate_distance_squared(thumb_mcp, wrist)
+        
+        thumb_extended = dist_thumb_tip > dist_thumb_mcp
+        if thumb_extended:
+            extended_count += 1
+        
+        # All 5 fingers must be extended
+        if extended_count < 5:
+            return None
+        
+        # 3. Calculate finger spread for confidence scoring
+        spread = get_finger_spread(landmarks, FINGER_TIPS)
+        
+        # Normalize spread score: typical palm spread is around 0.3-0.5
+        # Higher spread = higher confidence
+        spread_score = min(spread / 0.4, 1.0)
+        
+        # Base confidence of 0.7, boost up to 1.0 with good spread
+        confidence = 0.7 + (spread_score * 0.3)
+        
+        return GestureResult(
+            name=self.name,
+            confidence=confidence,
+            data={
+                "extended_fingers": extended_count, 
+                "spread": spread,
+                "spread_score": spread_score
+            }
+        )
 
 
-@register("basic")
-class ClosedFist(Gesture):
-    """All fingers closed (fist)."""
-    
-    @property
-    def name(self) -> str:
-        return "CLOSED_FIST"
-    
-    @property
-    def priority(self) -> int:
-        return 5
-    
-    @property
-    def description(self) -> str:
-        return "Closed fist with all fingers down"
-    
-    def detect(self, landmarks, context: Dict[str, Any]) -> Optional[GestureResult]:
-        extended = count_extended_fingers(landmarks)
-        
-        if extended == 0:
-            # Check fist is compact
-            index_tip = landmarks.landmark[mp_holistic.HandLandmark.INDEX_FINGER_TIP]
-            wrist = landmarks.landmark[mp_holistic.HandLandmark.WRIST]
-            compactness = np.sqrt(
-                (index_tip.x - wrist.x) ** 2 +
-                (index_tip.y - wrist.y) ** 2
-            )
-            
-            # Smaller distance = more compact = higher confidence
-            confidence = max(0.0, 1.0 - compactness * 3)
-            
-            return GestureResult(
-                name=self.name,
-                confidence=confidence,
-                data={'extended_fingers': extended, 'compactness': compactness}
-            )
-        
-        return None
 
+class ClosedFistGesture(BasicGesture):
+    """
+    Closed Fist Gesture.
+    """
+    def __init__(self):
+        super().__init__(config.GESTURE_FIST)
 
-@register("basic")
-class Pointing(Gesture):
-    """Index finger extended, others closed."""
-    
-    @property
-    def name(self) -> str:
-        return "POINTING"
-    
-    @property
-    def priority(self) -> int:
-        return 6
-    
-    @property
-    def description(self) -> str:
-        return "Pointing with index finger"
-    
-    def detect(self, landmarks, context: Dict[str, Any]) -> Optional[GestureResult]:
-        extended = count_extended_fingers(landmarks)
+    def detect(self, landmarks: Any, context: Dict[str, Any]) -> Optional[GestureResult]:
+        """
+        Detect closed fist gesture.
         
-        if extended == 1:
-            # Check it's the index finger
-            index_tip = landmarks.landmark[mp_holistic.HandLandmark.INDEX_FINGER_TIP]
-            index_pip = landmarks.landmark[mp_holistic.HandLandmark.INDEX_FINGER_PIP]
+        Criteria:
+        - All 4 fingers (index, middle, ring, pinky) must be curled
+        - Thumb should be tucked in or curled
+        
+        Args:
+            landmarks: MediaPipe landmarks
+            context: Context dictionary
             
-            if index_tip.y < index_pip.y:
-                # Calculate pointing direction
-                index_mcp = landmarks.landmark[mp_holistic.HandLandmark.INDEX_FINGER_MCP]
-                direction_x = index_tip.x - index_mcp.x
-                direction_y = index_tip.y - index_mcp.y
-                
-                # Confidence based on finger extension
-                extension = np.sqrt(direction_x**2 + direction_y**2)
-                confidence = min(1.0, extension * 3)
-                
-                return GestureResult(
-                    name=self.name,
-                    confidence=confidence,
-                    data={
-                        'direction': {'x': direction_x, 'y': direction_y},
-                        'extension': extension
-                    }
-                )
+        Returns:
+            GestureResult if detected, None otherwise
+        """
+        wrist_idx = HandLandmarkIndices.WRIST
         
-        return None
+        # 1. Check if all fingers are curled
+        finger_checks = [
+            (HandLandmarkIndices.INDEX_FINGER_TIP, HandLandmarkIndices.INDEX_FINGER_PIP),
+            (HandLandmarkIndices.MIDDLE_FINGER_TIP, HandLandmarkIndices.MIDDLE_FINGER_PIP),
+            (HandLandmarkIndices.RING_FINGER_TIP, HandLandmarkIndices.RING_FINGER_PIP),
+            (HandLandmarkIndices.PINKY_TIP, HandLandmarkIndices.PINKY_PIP),
+        ]
+        
+        curled_count = 0
+        for tip_idx, pip_idx in finger_checks:
+            if is_finger_curled(landmarks, tip_idx, pip_idx, wrist_idx):
+                curled_count += 1
+        
+        # All 4 fingers must be curled
+        if curled_count < 4:
+            return None
+        
+        # 2. Check thumb: should be tucked or curled
+        # For fist, thumb is usually curled over fingers or tucked at side
+        thumb_tip = landmarks[HandLandmarkIndices.THUMB_TIP]
+        index_mcp = landmarks[HandLandmarkIndices.INDEX_FINGER_MCP]
+        middle_mcp = landmarks[HandLandmarkIndices.MIDDLE_FINGER_MCP]
+        
+        # Check distance to index and middle MCP (thumb should be close to hand body)
+        dist_to_index = calculate_distance_squared(thumb_tip, index_mcp)
+        dist_to_middle = calculate_distance_squared(thumb_tip, middle_mcp)
+        
+        # Threshold for "close" - empirically determined
+        # Thumb tip should be within ~0.05 distance (squared: 0.0025) to hand body
+        thumb_tucked_threshold = 0.06  # Generous threshold for robustness
+        
+        thumb_curled = (dist_to_index < thumb_tucked_threshold or 
+                       dist_to_middle < thumb_tucked_threshold)
+        
+        if not thumb_curled:
+            return None
+        
+        # Calculate confidence based on how tightly curled the fist is
+        # Tighter curl = smaller average distance from fingertips to wrist
+        wrist = landmarks[wrist_idx]
+        total_tip_distance = 0.0
+        
+        for tip_idx, _ in finger_checks:
+            tip = landmarks[tip_idx]
+            total_tip_distance += calculate_distance_squared(tip, wrist)
+        
+        avg_tip_distance = total_tip_distance / len(finger_checks)
+        
+        # Normalize confidence: tighter fist has lower avg distance
+        # Typical fist: avg_tip_distance ~ 0.01-0.04
+        # Looser curl: avg_tip_distance ~ 0.05-0.08
+        if avg_tip_distance < 0.03:
+            confidence = 1.0  # Very tight fist
+        elif avg_tip_distance < 0.05:
+            confidence = 0.9
+        else:
+            confidence = 0.75  # Looser fist but still valid
+        
+        return GestureResult(
+            name=self.name,
+            confidence=confidence,
+            data={
+                "curled_fingers": curled_count, 
+                "thumb_curled": thumb_curled,
+                "avg_tip_distance": avg_tip_distance
+            }
+        )
 
-
-@register("basic")
-class PeaceSign(Gesture):
-    """Index and middle fingers extended (V sign)."""
-    
-    @property
-    def name(self) -> str:
-        return "PEACE_SIGN"
-    
-    @property
-    def priority(self) -> int:
-        return 6
-    
-    @property
-    def description(self) -> str:
-        return "Peace sign (V) with two fingers"
-    
-    def detect(self, landmarks, context: Dict[str, Any]) -> Optional[GestureResult]:
-        extended = count_extended_fingers(landmarks)
-        
-        if extended == 2:
-            # Check it's index and middle fingers
-            index_tip = landmarks.landmark[mp_holistic.HandLandmark.INDEX_FINGER_TIP]
-            index_pip = landmarks.landmark[mp_holistic.HandLandmark.INDEX_FINGER_PIP]
-            middle_tip = landmarks.landmark[mp_holistic.HandLandmark.MIDDLE_FINGER_TIP]
-            middle_pip = landmarks.landmark[mp_holistic.HandLandmark.MIDDLE_FINGER_PIP]
-            
-            index_extended = index_tip.y < index_pip.y
-            middle_extended = middle_tip.y < middle_pip.y
-            
-            if index_extended and middle_extended:
-                # Measure V angle (spread)
-                spread = abs(index_tip.x - middle_tip.x)
-                confidence = min(1.0, spread * 8)
-                
-                return GestureResult(
-                    name=self.name,
-                    confidence=confidence,
-                    data={'spread': spread}
-                )
-        
-        return None
-
-
-@register("basic")
-class ThumbsUp(Gesture):
-    """Thumb extended, other fingers closed."""
-    
-    @property
-    def name(self) -> str:
-        return "THUMBS_UP"
-    
-    @property
-    def priority(self) -> int:
-        return 7
-    
-    @property
-    def description(self) -> str:
-        return "Thumbs up gesture"
-    
-    def detect(self, landmarks, context: Dict[str, Any]) -> Optional[GestureResult]:
-        extended = count_extended_fingers(landmarks)
-        
-        if extended == 0:
-            # Check thumb is up
-            thumb_tip = landmarks.landmark[mp_holistic.HandLandmark.THUMB_TIP]
-            thumb_mcp = landmarks.landmark[mp_holistic.HandLandmark.THUMB_CMC]
-            wrist = landmarks.landmark[mp_holistic.HandLandmark.WRIST]
-            
-            # Thumb should be above wrist
-            thumb_up = thumb_tip.y < wrist.y
-            
-            if thumb_up:
-                # Calculate how far up
-                height = wrist.y - thumb_tip.y
-                confidence = min(1.0, height * 5)
-                
-                return GestureResult(
-                    name=self.name,
-                    confidence=confidence,
-                    data={'height': height}
-                )
-        
-        return None
-
-
-@register("basic")
-class RockOn(Gesture):
-    """Index and pinky extended (rock/metal sign)."""
-    
-    @property
-    def name(self) -> str:
-        return "ROCK_ON"
-    
-    @property
-    def priority(self) -> int:
-        return 6
-    
-    @property
-    def description(self) -> str:
-        return "Rock on / metal horns gesture"
-    
-    def detect(self, landmarks, context: Dict[str, Any]) -> Optional[GestureResult]:
-        # Check index extended
-        index_tip = landmarks.landmark[mp_holistic.HandLandmark.INDEX_FINGER_TIP]
-        index_pip = landmarks.landmark[mp_holistic.HandLandmark.INDEX_FINGER_PIP]
-        index_extended = index_tip.y < index_pip.y
-        
-        # Check pinky extended
-        pinky_tip = landmarks.landmark[mp_holistic.HandLandmark.PINKY_TIP]
-        pinky_pip = landmarks.landmark[mp_holistic.HandLandmark.PINKY_PIP]
-        pinky_extended = pinky_tip.y < pinky_pip.y
-        
-        # Check middle and ring closed
-        middle_tip = landmarks.landmark[mp_holistic.HandLandmark.MIDDLE_FINGER_TIP]
-        middle_pip = landmarks.landmark[mp_holistic.HandLandmark.MIDDLE_FINGER_PIP]
-        middle_closed = middle_tip.y >= middle_pip.y
-        
-        if index_extended and pinky_extended and middle_closed:
-            # Measure spread
-            spread = abs(index_tip.x - pinky_tip.x)
-            confidence = min(1.0, spread * 3)
-            
-            return GestureResult(
-                name=self.name,
-                confidence=confidence,
-                data={'spread': spread}
-            )
-        
-        return None

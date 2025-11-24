@@ -1,153 +1,134 @@
 # 3DX - Hand Gesture Control for Blender
 
-**Version:** 1.0.0 (High-level structure)  
-**Status:** Ready for implementation
+![Version](https://img.shields.io/badge/version-1.0.0-blue) ![Blender](https://img.shields.io/badge/blender-3.0+-orange) ![Python](https://img.shields.io/badge/python-3.9+-green)
 
-Control Blender with hand gestures using your webcam!
+**Control Blender's 3D viewport with hand gestures using your webcam.** Production-ready addon with MediaPipe hand tracking, event-driven architecture, and Pydantic validation.
 
-## 🎯 Features
+## Features
 
-- 🤏 **Pinch & Drag** - Rotate the viewport
-- ✌️ **V-Gesture** - Pan the camera  
-- 🖐️ **Open Palm** - Play animation
-- ✊ **Closed Fist** - Stop animation
+| Gesture | Action |
+|---------|--------|
+| 🤏 Pinch & Drag | Rotate viewport (orbit-style) |
+| ✌️ V-Gesture | Pan camera |
+| 🖐️ Open Palm | Play animation |
+| ✊ Closed Fist | Stop animation |
 
-## 📦 What's Included
+## Quick Start
 
-This repository contains a **complete Blender addon structure** with:
-- ✅ 25+ Python files with comprehensive type annotations
-- ✅ All required Blender addon components (operators, properties, panels)
-- ✅ Gesture detection framework (detector, filters, validators)
-- ✅ Handler system for direct Blender API manipulation
-- ✅ TODO markers with pseudocode for implementation
+### 1. Install Dependencies
 
-## 🚀 Installation
-
-### Prerequisites
-
-Install required Python packages in **Blender's Python** (not your system Python):
+Install in **Blender's Python** (not system Python):
 
 ```bash
-# macOS example:
-/Applications/Blender.app/Contents/Resources/4.2/python/bin/python3.11 -m pip install opencv-python mediapipe numpy
+# macOS
+/Applications/Blender.app/Contents/Resources/4.2/python/bin/python3.11 -m pip install opencv-python mediapipe numpy pydantic
 
-# Windows example:
-"C:\Program Files\Blender Foundation\Blender 4.2\4.2\python\bin\python.exe" -m pip install opencv-python mediapipe numpy
+# Windows
+"C:\Program Files\Blender Foundation\Blender 4.2\4.2\python\bin\python.exe" -m pip install opencv-python mediapipe numpy pydantic
 
-# Linux example:
-/usr/share/blender/4.2/python/bin/python3.11 -m pip install opencv-python mediapipe numpy
+# Linux
+/usr/share/blender/4.2/python/bin/python3.11 -m pip install opencv-python mediapipe numpy pydantic
 ```
 
-### Install Addon
+### 2. Install Addon
 
-**Option 1: Development Mode**
-1. Clone or download this repository
-2. In Blender: Edit → Preferences → Add-ons
-3. Click "Install"
-4. Navigate to this folder and select it
-5. Enable "3DX - Gesture Control"
+1. Download/clone this repository
+2. Blender → Edit → Preferences → Add-ons → Install
+3. Select the `3dx` folder (or ZIP it first)
+4. Enable "3DX - Gesture Control"
 
-**Option 2: As ZIP**
-1. Create a ZIP of this entire folder
-2. In Blender: Edit → Preferences → Add-ons → Install
-3. Select the ZIP file
-4. Enable the addon
+### 3. Use
 
-## 🎨 Usage
+1. Open 3D Viewport → Press `N` → Select **3DX** tab
+2. Click **Start** → Grant camera permission
+3. Perform gestures in front of camera
 
-1. Open Blender's 3D Viewport
-2. Press `N` to open the sidebar
-3. Click the **"3DX"** tab
-4. Click **"Start"** to begin gesture control
-5. Grant camera permission if prompted
-6. Perform gestures in front of your camera!
-
-### Settings
-
-Adjust in the Settings panel:
-- **Camera Index** - Select camera device (0 = default)
-- **Rotation/Pan Sensitivity** - Adjust gesture responsiveness  
-- **Enable/Disable** individual gestures
-- **Show Preview** - Display camera feed in Blender
-
-## 📁 Repository Structure
+## Architecture
 
 ```
-3dx/  (This is now the addon root)
-├── __init__.py              # Addon entry point
-├── config.py                # Configuration constants
-├── utils.py                 # Utility functions
-├── operators.py             # All Blender operators
+3dx/
+├── __init__.py              # Addon registration
+├── config.py                # Constants, Pydantic models
+├── gesture_engine.py        # Main processing loop
+├── operators.py             # Start/stop/settings operators
 ├── properties.py            # Preferences & runtime state
 ├── panels.py                # UI panels
-├── gesture_engine.py        # Main gesture engine
-├── core/                    # Event system & modality
-├── gestures/                # Detection, filters, validators
-├── handlers/                # Direct Blender API handlers
-├── camera/                  # Camera capture module
-├── libs/                    # (Future: bundled dependencies)
-├── assets/                  # (Future: icons & images)
-└── OLD_REFERENCE/           # Archived old structure
+├── utils.py                 # Camera validation, math utils
+├── core/
+│   ├── event_system.py      # Pub/sub event bus
+│   ├── listener.py          # Event → handler routing
+│   └── modality_manager.py  # State management
+├── gestures/
+│   ├── detector.py          # Hand detection wrapper
+│   ├── filters.py           # Temporal smoothing
+│   ├── validators.py        # Data validation
+│   ├── landmarks.py         # Hand landmark utilities
+│   └── library/             # Gesture implementations
+│       ├── basic.py         # Palm, Fist
+│       ├── navigation.py    # Pinch, V-Gesture
+│       └── advanced.py      # (Extensible)
+├── handlers/
+│   ├── handler_base.py      # Base handler interface
+│   ├── viewport_handler.py  # Viewport manipulation
+│   └── animation_handler.py # Animation control
+└── camera/
+    └── capture.py           # OpenCV camera wrapper
 ```
 
-## 🔧 Development Status
+## Key Features
 
-This is **Version 1.0.0** - a high-level structure with implementation guidance.
+- **Event-Driven**: Pub/sub architecture with `EventBus` for loose coupling
+- **Type-Safe**: Full type hints + Pydantic validation on all data structures
+- **Modular**: Gesture library, handlers, and filters are independently extensible
+- **Robust**: Comprehensive error handling, graceful camera fallback
+- **Tested**: 80+ unit tests (event system, gestures, handlers, utils)
+- **Performant**: ~30 FPS frame processing, configurable sensitivity
 
-### ✅ Completed
-- Complete addon file structure
-- Type-annotated codebase
-- All UI components (operators, panels, properties)
-- Gesture detection framework
-- Handler system architecture
+## Configuration
 
-### 🚧 TODO (Implementation Needed)
-All complex logic is marked with `#TODO` and pseudocode:
-- Camera capture implementation
-- MediaPipe hands integration
-- Frame processing pipeline
-- Viewport manipulation logic
-- Gesture handling execution
+Access via Edit → Preferences → Add-ons → 3DX:
 
-See `#TODO` markers in code for detailed implementation guidance.
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Camera Index | Webcam device ID | 0 |
+| Rotation Sensitivity | Viewport rotation speed | 0.1 |
+| Pan Sensitivity | Camera pan speed | 0.1 |
+| Min Confidence | Gesture detection threshold | 0.6 |
+| Frame Rate | Processing FPS | 30 |
+| Show Preview | Display camera feed | False |
+| Enable [Gesture] | Toggle individual gestures | All enabled |
 
-## 📖 Documentation
+## Development
 
-- [`STRUCTURE_SUMMARY.md`](STRUCTURE_SUMMARY.md) - Complete structure overview
-- [`OLD_REFERENCE/ROADMAP.md`](OLD_REFERENCE/ROADMAP.md) - Development roadmap
-- [`OLD_REFERENCE/ADDON_COMPONENTS.md`](OLD_REFERENCE/ADDON_COMPONENTS.md) - Component specifications
+**Tech Stack**: Python 3.9+, MediaPipe Hands, OpenCV, Pydantic, Blender API
 
-## 🐛 Troubleshooting
+**Code Style**: Google-style docstrings, type hints, `[3DX Module]` logging format
 
-### Camera not working
-- Check camera permissions in system settings
-- Try different camera indices (0, 1, 2...)
-- Test camera in another application first
-
-### Dependencies missing
-Install packages in **Blender's Python**, not system Python:
+**Testing**: Run tests in Blender's Python environment or install `fake-bpy-module`:
 ```bash
-<blender-python> -m pip install opencv-python mediapipe numpy
+pip install pytest fake-bpy-module-latest
+python -m pytest tests/ -v
 ```
 
-### Poor gesture detection
-- Ensure good lighting
-- Keep hand visible to camera
-- Adjust sensitivity in settings
-- Avoid cluttered backgrounds
+**Extending**:
+- Add gestures: Implement `Gesture` class in `gestures/library/`
+- Add handlers: Subclass `BaseHandler` in `handlers/`
+- Add modalities: Extend `ModalityManager` in `core/`
 
-## 🤝 Contributing
+## Troubleshooting
 
-This is a structured template ready for implementation. Contributions welcome!
+| Issue | Solution |
+|-------|----------|
+| Camera not detected | Check system permissions, try different indices (0,1,2) |
+| Dependencies error | Install in Blender's Python, not system Python |
+| Poor detection | Improve lighting, avoid cluttered backgrounds |
+| Gestures too sensitive | Lower sensitivity in preferences |
+| Addon won't enable | Check Blender console for import errors |
 
-1. Implement TODO sections following pseudocode
-2. Test with Blender
-3. Submit pull request
+## License
 
-## 📜 License
+MIT License
 
-MIT License - See LICENSE file for details
+## Author
 
-## 👥 Credits
-
-Developed by Matteo Caviglia (22cav)
+Matteo Caviglia ([@22cav](https://github.com/22cav)) - LauzHack 2025

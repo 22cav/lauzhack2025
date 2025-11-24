@@ -1,196 +1,126 @@
 """
-Gesture Detection Result and Detector Classes
+Gesture Detector
 
-Provides infrastructure for detecting and scoring gestures with confidence metrics.
+Core gesture detection logic with Pydantic validation.
 """
 
-from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+import sys
+import os
+
+# Add project root to sys.path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root = os.path.abspath(os.path.join(current_dir, ".."))
+if root not in sys.path:
+    sys.path.append(root)
+
 from abc import ABC, abstractmethod
+from typing import Dict, Any, Optional, List
 import time
-import logging
-
-logger = logging.getLogger(__name__)
+from pydantic import BaseModel, Field, field_validator
 
 
-@dataclass
-class GestureResult:
-    """Result of a gesture detection."""
+class GestureResult(BaseModel):
+    """
+    Result of a gesture detection with validation.
+    """
+    name: str = Field(..., min_length=1)
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    data: Dict[str, Any] = Field(default_factory=dict)
+    timestamp: float = Field(default_factory=time.time)
     
-    name: str                           # Gesture name (e.g., "OPEN_PALM")
-    confidence: float                    # Confidence score 0.0-1.0
-    data: Dict[str, Any] = field(default_factory=dict)  # Additional data
-    timestamp: float = field(default_factory=time.time)  # Detection time
-    
-    def __post_init__(self):
-        """Validate confidence value."""
-        if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError(f"Confidence must be 0.0-1.0, got {self.confidence}")
-    
-    def __str__(self):
-        return f"{self.name} ({self.confidence:.2f})"
-    
-    def __repr__(self):
-        return f"GestureResult(name='{self.name}', confidence={self.confidence:.2f})"
+    class Config:
+        frozen = True
 
 
 class Gesture(ABC):
-    """Abstract base class for gesture implementations."""
+    """
+    Abstract base class for gestures.
+    """
     
     @property
     @abstractmethod
     def name(self) -> str:
-        """Unique gesture name."""
+        """Name of the gesture."""
         pass
     
-    @property
-    def priority(self) -> int:
-        """Detection priority (higher = checked first). Default: 0"""
-        return 0
-    
-    @property
-    def description(self) -> str:
-        """Human-readable description."""
-        return f"{self.name} gesture"
-    
     @abstractmethod
-    def detect(self, landmarks, context: Dict[str, Any]) -> Optional[GestureResult]:
+    def detect(self, landmarks: Any, context: Dict[str, Any]) -> Optional[GestureResult]:
         """
         Detect gesture from landmarks.
         
         Args:
-            landmarks: MediaPipe hand landmarks
-            context: Additional context (previous gestures, hand side, etc.)
-        
+            landmarks: MediaPipe landmarks
+            context: Context dictionary
+            
         Returns:
-            GestureResult if detected with confidence > 0, None otherwise
+            GestureResult if detected, None otherwise
         """
         pass
 
 
 class GestureDetector:
     """
-    Main gesture detection engine.
-    
-    Manages registered gestures, performs detection, and filters results
-    based on confidence thresholds.
+    Manager for gesture detection.
     """
     
     def __init__(self, min_confidence: float = 0.5):
-        """
-        Initialize gesture detector.
-        
-        Args:
-            min_confidence: Minimum confidence threshold for valid detection
-        """
         self.gestures: List[Gesture] = []
         self.min_confidence = min_confidence
-        self.detection_count = 0
         self.history: List[GestureResult] = []
-        self.max_history = 30  # Keep last 30 detections
-        
-        logger.info(f"GestureDetector initialized with min_confidence={min_confidence}")
+        self.max_history = 30
     
-    def register(self, gesture: Gesture):
-        """
-        Register a gesture for detection.
-        
-        Args:
-            gesture: Gesture instance to register
-        """
-        if not isinstance(gesture, Gesture):
-            raise TypeError(f"Expected Gesture, got {type(gesture)}")
-        
-        # Check for duplicate names
-        if any(g.name == gesture.name for g in self.gestures):
-            logger.warning(f"Overwriting existing gesture: {gesture.name}")
-            self.gestures = [g for g in self.gestures if g.name != gesture.name]
-        
+    def register(self, gesture: Gesture) -> None:
+        """Register a new gesture."""
         self.gestures.append(gesture)
-        # Sort by priority (highest first)
-        self.gestures.sort(key=lambda g: g.priority, reverse=True)
-        
-        logger.debug(f"Registered gesture: {gesture.name} (priority={gesture.priority})")
     
-    def unregister(self, gesture_name: str):
-        """Remove a gesture from detection."""
-        self.gestures = [g for g in self.gestures if g.name != gesture_name]
-        logger.debug(f"Unregistered gesture: {gesture_name}")
-    
-    def detect(self, landmarks, context: Optional[Dict[str, Any]] = None) -> List[GestureResult]:
+    def detect_best(self, landmarks: Any, context: Optional[Dict[str, Any]] = None) -> Optional[GestureResult]:
         """
-        Detect all gestures from landmarks.
+        Detect the best matching gesture.
         
         Args:
-            landmarks: MediaPipe hand landmarks
-            context: Optional context dictionary
-        
+            landmarks: MediaPipe landmarks
+            context: Optional context
+            
         Returns:
-            List of GestureResult, sorted by confidence (highest first)
+            Best matching GestureResult or None
         """
+        # Safety check: ensure landmarks exist
         if landmarks is None:
-            return []
+            return None
+        
+        # Safety check: ensure we have registered gestures
+        if not self.gestures:
+            return None
         
         if context is None:
             context = {}
         
-        # Add history to context
-        context['history'] = self.history
+        best_result: Optional[GestureResult] = None
+        max_confidence = 0.0
         
-        results = []
-        
-        # Detect all gestures
         for gesture in self.gestures:
             try:
                 result = gesture.detect(landmarks, context)
+                
+                # Validate result
                 if result and result.confidence >= self.min_confidence:
-                    results.append(result)
+                    if result.confidence > max_confidence:
+                        max_confidence = result.confidence
+                        best_result = result
             except Exception as e:
-                logger.error(f"Error detecting {gesture.name}: {e}", exc_info=True)
+                # Log error but continue with other gestures
+                # Don't let one gesture crash the entire detection
+                import logging
+                logging.error(f"Error detecting gesture {gesture.name}: {e}")
+                continue
         
-        # Sort by confidence
-        results.sort(key=lambda r: r.confidence, reverse=True)
-        
-        # Update statistics
-        self.detection_count += 1
-        
-        # Update history with top result
-        if results:
-            self.history.append(results[0])
-            if len(self.history) > self.max_history:
-                self.history.pop(0)
-        
-        return results
+        if best_result:
+            self._update_history(best_result)
+            
+        return best_result
     
-    def detect_best(self, landmarks, context: Optional[Dict[str, Any]] = None) -> Optional[GestureResult]:
-        """
-        Detect the most confident gesture.
-        
-        Args:
-            landmarks: MediaPipe hand landmarks
-            context: Optional context dictionary
-        
-        Returns:
-            Best GestureResult or None
-        """
-        results = self.detect(landmarks, context)
-        return results[0] if results else None
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """Get detection statistics."""
-        gesture_counts = {}
-        for result in self.history:
-            gesture_counts[result.name] = gesture_counts.get(result.name, 0) + 1
-        
-        return {
-            'total_detections': self.detection_count,
-            'registered_gestures': len(self.gestures),
-            'history_size': len(self.history),
-            'gesture_counts': gesture_counts,
-        }
-    
-    def reset(self):
-        """Reset detection history and stats."""
-        self.history.clear()
-        self.detection_count = 0
-        logger.info("Detector reset")
+    def _update_history(self, result: GestureResult) -> None:
+        """Update detection history."""
+        self.history.append(result)
+        if len(self.history) > self.max_history:
+            self.history.pop(0)
