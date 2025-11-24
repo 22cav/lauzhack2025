@@ -1,6 +1,6 @@
 <div align="center">
 
-![Gesture Control System](logo/logo.jpg)
+<img src="logo/logo.png" alt="Gesture Control System" style="background-color: rgba(229, 229, 229, 1);">
 
 # 3DX
 
